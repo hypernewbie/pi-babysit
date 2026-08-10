@@ -19,6 +19,10 @@ export const STEER_COOLDOWN_MS = 30_000;
 
 /** Build the steering block injected into the main session. */
 export function buildSteerMessage(verdict: BabysitVerdict, instruction: string | undefined): string {
+	if (verdict.status === "concern") {
+		// Soft nudge for possible drift: small, no evidence dump.
+		return "AUTOMATIC REMINDER: Check your actions against original user prompt, did you misunderstand user intent?";
+	}
 	const offTrack = verdict.status === "off_track";
 	const headline = offTrack
 		? "REMINDER: YOU ARE OFF TRACK FROM USER INTENT."

@@ -479,5 +479,5 @@ test("steer=concern triggers on concern verdicts", async () => {
 
 	assert.equal(h.api.sentMessages.length, 1);
 	const args = h.api.sentMessages[0] as [Record<string, unknown>, Record<string, unknown>];
-	assert.ok(String(args[0].content).includes("YOU MAY BE OFF TRACK FROM USER INTENT."));
+	assert.ok(String(args[0].content).includes("AUTOMATIC REMINDER: Check your actions against original user prompt"));
 });

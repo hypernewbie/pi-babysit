@@ -22,11 +22,12 @@ test("off_track message contains the reminder lines and the rule", () => {
 	assert.ok(msg.includes("assistant talked about the roman empire"));
 });
 
-test("concern message is softer but still demands a reply", () => {
+test("concern message is a small reminder", () => {
 	const msg = buildSteerMessage(verdict("concern"), "do not talk about the roman empire");
-	assert.ok(msg.includes("YOU MAY BE OFF TRACK FROM USER INTENT."));
-	assert.ok(msg.includes("WAS JUDGED POSSIBLY VIOLATED."));
-	assert.ok(msg.includes("YOU MUST REPLY TO THIS MESSAGE"));
+	assert.equal(
+		msg,
+		"AUTOMATIC REMINDER: Check your actions against original user prompt, did you misunderstand user intent?",
+	);
 });
 
 test("no-instruction message falls back to a generic violation line", () => {
