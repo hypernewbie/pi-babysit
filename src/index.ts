@@ -14,6 +14,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type {
+	AgentSettledEvent,
 	ExtensionAPI,
 	ExtensionCommandContext,
 	ExtensionContext,
@@ -364,6 +365,19 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 		if (!babysitter.counter.pending || babysitter.counter.inFlight) return;
 		// Awaited: Pi waits for extension handlers before preparing the next
 		// model turn, so the check sees a coherent, persisted snapshot.
+		await runCheck(babysitter, ctx, {
+			fromCounter: true,
+			appendEntry: (type, data) => pi.appendEntry(type, data),
+		});
+	});
+
+	// Optional lower-latency-insensitive "check after run" mode: fires only
+	// after the entire agent run (retries, compaction retries, queued
+	// continuations) has settled.
+	pi.on("agent_settled", async (_event: AgentSettledEvent, ctx: ExtensionContext) => {
+		if (!babysitter.state.enabled) return;
+		if (!babysitter.config.runAfterSettle) return;
+		if (!babysitter.counter.pending || babysitter.counter.inFlight) return;
 		await runCheck(babysitter, ctx, {
 			fromCounter: true,
 			appendEntry: (type, data) => pi.appendEntry(type, data),

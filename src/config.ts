@@ -24,6 +24,8 @@ export interface BabysitConfig {
 	maxToolResults: number;
 	/** Persist each verdict as a non-LLM custom session entry. */
 	persistVerdicts: boolean;
+	/** Also run a pending check at agent_settled (after the whole run settles). */
+	runAfterSettle: boolean;
 }
 
 export const DEFAULT_CONFIG: BabysitConfig = {
@@ -37,6 +39,7 @@ export const DEFAULT_CONFIG: BabysitConfig = {
 	maxToolResultChars: 4000,
 	maxToolResults: 3,
 	persistVerdicts: false,
+	runAfterSettle: false,
 };
 
 export type PartialConfig = Partial<BabysitConfig>;
