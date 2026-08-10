@@ -40,6 +40,7 @@ export function buildStablePrefix(inputs: PrefixInputs): string {
 	lines.push(`Evaluate:`);
 	lines.push(`- Is the current work still serving the user's stated goal?`);
 	lines.push(`- Is Pi following the referenced project rules?`);
+	lines.push(`- Is the session violating an explicit extra instruction?`);
 	lines.push(`- Has it started unrelated work or unnecessary refactoring?`);
 	lines.push(`- Are repeated failures, workarounds, or tool loops appearing?`);
 	lines.push(`- Is there evidence that the current approach needs user confirmation?`);
@@ -51,6 +52,8 @@ export function buildStablePrefix(inputs: PrefixInputs): string {
 		lines.push(`### Extra instruction`);
 		lines.push(``);
 		lines.push(inputs.instruction);
+		lines.push(``);
+		lines.push(`This is a hard rule for the session. If the recent activity violates it, rate concern or off_track — do not let overall goal progress override it.`);
 		lines.push(``);
 	}
 

@@ -243,6 +243,7 @@ async function runCheck(
 		const tail = buildActivityTail(ctx.sessionManager.buildContextEntries() as ActivityEntry[], tailOpts);
 		st.lastTailLen = tail.text.length;
 		st.lastTailTruncated = tail.truncated;
+		st.lastTailPreview = tail.text.slice(-300);
 		const leafChanged = st.lastCheckedLeafId !== undefined && st.lastCheckedLeafId !== leafId;
 		const contextChangedNote = leafChanged ? "(session branch/leaf changed since the last check; context was rebuilt)" : undefined;
 		const activityPrompt = buildActivityPrompt(
@@ -373,6 +374,7 @@ function statusReport(babysitter: Babysitter): string {
 	if (st.instruction) lines.push(`  instruction: ${st.instruction}`);
 	if (st.referencedFiles.length > 0) lines.push(`  refs: ${st.referencedFiles.join(", ")}`);
 	if (st.lastTailLen !== undefined) lines.push(`  tail: ${st.lastTailLen} chars (truncated=${st.lastTailTruncated ?? false})`);
+	if (st.lastTailPreview) lines.push(`  tail preview: ${st.lastTailPreview.replace(/\s+/g, " ").trim()}`);
 	if (st.lastVerdict) {
 		lines.push(`  last verdict: ${st.lastVerdict.status} (conf ${st.lastVerdict.confidence}) — ${st.lastVerdict.summary.replace(/\s+/g, " ").trim()}`);
 		lines.push(`  last recommendation: ${st.lastVerdict.recommendation.replace(/\s+/g, " ").trim()}`);

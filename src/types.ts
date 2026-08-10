@@ -70,6 +70,8 @@ export interface BabysitState {
 	/** Last activity tail size/truncation, for /babysit status diagnostics. */
 	lastTailLen?: number;
 	lastTailTruncated?: boolean;
+	/** Newest ~300 chars of the last tail, to eyeball what the model saw. */
+	lastTailPreview?: string;
 	usage: UsageTotals;
 	abortController?: AbortController;
 }

@@ -68,11 +68,11 @@ test("compaction and branch summaries surface", () => {
 	assert.ok(events[1]!.text.startsWith("[abandoned branch]"));
 });
 
-test("budget drops oldest non-user entries but keeps newest user message", () => {
+test("budget drops oldest content but keeps the newest user message", () => {
 	const entries = [user("old goal"), assistant("work1"), assistant("work2"), user("latest instruction")];
-	const r = buildActivityTail(entries, opts({ maxChars: 30 }));
-	assert.ok(r.text.includes("latest instruction"));
-	assert.ok(r.text.includes("old goal"), "user messages always survive");
+	const r = buildActivityTail(entries, opts({ maxChars: 20 }));
+	assert.ok(r.text.includes("latest instruction"), "newest user message survives");
+	assert.ok(!r.text.includes("old goal"), "old user message dropped when over budget");
 	assert.equal(r.dropped >= 1, true);
 });
 

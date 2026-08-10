@@ -174,15 +174,18 @@ export function buildActivityTail(entries: ActivityEntry[], opts: ActivityOption
 	const { events, truncated } = normalizeEntries(entries, opts);
 	if (events.length === 0) return { text: "(no recent activity)", dropped: 0, truncated: false };
 
+	// Walk newest-first, claiming budget. Only the newest user message is
+	// force-kept; everything else (including older user messages) must fit
+	// the budget, so the tail stays bounded.
 	let budget = opts.maxChars;
 	let dropped = 0;
-
-	// Walk newest-first, claiming budget. User messages always survive.
+	let newestUserKept = false;
 	const claimed: NormalizedEvent[] = [];
 	for (let i = events.length - 1; i >= 0; i--) {
 		const ev = events[i]!;
-		if (ev.isUser) {
+		if (ev.isUser && !newestUserKept) {
 			claimed.push(ev);
+			newestUserKept = true;
 			continue;
 		}
 		if (ev.text.length <= budget) {
