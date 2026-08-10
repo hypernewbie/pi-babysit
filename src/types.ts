@@ -72,6 +72,8 @@ export interface BabysitState {
 	lastTailTruncated?: boolean;
 	/** Newest ~300 chars of the last tail, to eyeball what the model saw. */
 	lastTailPreview?: string;
+	/** Hash of the exact request sent to the model (prefix + tail). */
+	lastRequestHash?: string;
 	usage: UsageTotals;
 	abortController?: AbortController;
 }

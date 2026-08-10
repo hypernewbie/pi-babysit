@@ -32,7 +32,7 @@ import {
 	loadReference,
 	type LoadedReference,
 } from "./file-references.ts";
-import { buildStablePrefix, hashStablePrefix } from "./prefix.ts";
+import { buildStablePrefix, hashStablePrefix, hashString } from "./prefix.ts";
 import { buildActivityTail, contentText, type ActivityEntry } from "./activity.ts";
 import { runModelCheck, type ModelRegistryCtx } from "./model-check.ts";
 import { ToolCounter } from "./scheduler.ts";
@@ -254,6 +254,7 @@ async function runCheck(
 			st.activitySummary,
 			contextChangedNote,
 		);
+		st.lastRequestHash = hashString(prefix + "\n" + activityPrompt);
 
 		// Combined abort: active agent signal + session shutdown controller.
 		const signals: AbortSignal[] = [];
@@ -375,6 +376,7 @@ function statusReport(babysitter: Babysitter): string {
 	if (st.referencedFiles.length > 0) lines.push(`  refs: ${st.referencedFiles.join(", ")}`);
 	if (st.lastTailLen !== undefined) lines.push(`  tail: ${st.lastTailLen} chars (truncated=${st.lastTailTruncated ?? false})`);
 	if (st.lastTailPreview) lines.push(`  tail preview: ${st.lastTailPreview.replace(/\s+/g, " ").trim()}`);
+	if (st.lastRequestHash) lines.push(`  request hash: ${st.lastRequestHash}`);
 	if (st.lastVerdict) {
 		lines.push(`  last verdict: ${st.lastVerdict.status} (conf ${st.lastVerdict.confidence}) — ${st.lastVerdict.summary.replace(/\s+/g, " ").trim()}`);
 		lines.push(`  last recommendation: ${st.lastVerdict.recommendation.replace(/\s+/g, " ").trim()}`);
