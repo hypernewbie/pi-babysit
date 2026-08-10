@@ -65,9 +65,3 @@ To work on the extension, do these steps:
 2. Run `npm run typecheck` to check types.
 3. Run `npm test` to run tests.
 4. Run `npm pack --dry-run` to inspect the package.
-
-## Notes
-
-`turn_end` handlers run before Pi starts the next turn. At that point, tool results are already in the session tree. For periodic checks, use `turn_end` as the main hook.
-
-The extension is advisory by default: it reports verdicts and never edits files or runs tools. With `--steer`, an `off_track` or `concern` verdict also injects a reminder message that the agent must answer.
