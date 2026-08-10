@@ -38,8 +38,10 @@ export const DEFAULT_CONFIG: BabysitConfig = {
 	rules: [],
 	maxFileBytes: 64 * 1024,
 	maxTotalRefBytes: 128 * 1024,
-	maxToolResultChars: 4000,
-	maxToolResults: 3,
+	// Keep tool results short so the tail budget stays with the conversation
+	// (the actual drift signal) instead of raw file contents from reads.
+	maxToolResultChars: 1000,
+	maxToolResults: 2,
 	persistVerdicts: false,
 	runAfterSettle: false,
 	cacheRetention: "short",
