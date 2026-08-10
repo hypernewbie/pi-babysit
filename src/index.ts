@@ -220,6 +220,7 @@ async function runCheck(
 			references: refs,
 			everyToolCalls: babysitter.config.everyToolCalls,
 			tailTokens: babysitter.config.tailTokens,
+			instruction: st.instruction,
 		};
 		const prefix = buildStablePrefix(prefixInputs);
 		const prefixHash = hashStablePrefix(prefixInputs);
@@ -402,6 +403,7 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 
 			switch (parsed.subcommand) {
 				case "now": {
+					if (parsed.instruction) babysitter.state.instruction = parsed.instruction;
 					await ctx.waitForIdle();
 					await runCheck(babysitter, ctx, { refs: parsed.refs, model: parsed.model, fromCounter: false, appendEntry });
 					break;
@@ -413,6 +415,7 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 					}
 					if (parsed.model) babysitter.config.model = parsed.model;
 					if (parsed.refs.length > 0) babysitter.config.rules = dedupeReferences(parsed.refs, ctx.cwd);
+					if (parsed.instruction) babysitter.state.instruction = parsed.instruction;
 					babysitter.state.enabled = true;
 					babysitter.counter.setEnabled(true);
 					notify(ctx, `babysit enabled (every ${babysitter.config.everyToolCalls} tool executions; model ${modelId(babysitter) || "unset"})`, "info");

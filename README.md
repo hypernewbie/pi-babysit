@@ -58,6 +58,7 @@ Options:
 - `--every N`: check after N completed tools. Default is 5.
 - `--model provider/model-id`: babysitter model for this session.
 - `@file/path`: add a file to the stable prefix.
+- Any other text: a custom instruction for the check (also `--instruction ...`).
 
 Paths after `@file/` are relative to the session directory. Absolute paths also work. Pi removes duplicates, enforces size limits, and reloads a file only when the file changes.
 

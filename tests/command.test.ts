@@ -48,3 +48,24 @@ test("model id with slashes", () => {
 	const c = parseCommand("now --model openrouter/anthropic/claude-sonnet-4");
 	assert.equal(c.model, "openrouter/anthropic/claude-sonnet-4");
 });
+
+test("bare text after flags becomes the instruction", () => {
+	const c = parseCommand("on --every 5 --model x/y here dont follow these rules pls: @file/RULEZ.md");
+	assert.equal(c.subcommand, "on");
+	assert.equal(c.every, 5);
+	assert.equal(c.model, "x/y");
+	assert.deepEqual(c.refs, ["RULEZ.md"]);
+	assert.equal(c.instruction, "here dont follow these rules pls:");
+});
+
+test("--instruction collects tokens until a flag or reference", () => {
+	const c = parseCommand("now --instruction check carefully --model x/y @file/RULEZ.md");
+	assert.equal(c.instruction, "check carefully");
+	assert.equal(c.model, "x/y");
+	assert.deepEqual(c.refs, ["RULEZ.md"]);
+});
+
+test("no leftover text means no instruction", () => {
+	assert.equal(parseCommand("now --model x/y").instruction, undefined);
+	assert.equal(parseCommand("@file/RULEZ.md").instruction, undefined);
+});

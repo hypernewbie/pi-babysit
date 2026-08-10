@@ -63,6 +63,8 @@ export interface BabysitState {
 	prefixHash?: string;
 	/** Baseline user intent, captured once per session. */
 	intent?: string;
+	/** Custom instruction for checks, set from the command (stable prefix). */
+	instruction?: string;
 	/** Referenced files currently baked into the prefix. */
 	referencedFiles: string[];
 	usage: UsageTotals;

@@ -18,8 +18,9 @@ export interface PrefixInputs {
 	references: LoadedReference[];
 	/** Automatic check interval (informational context for the judge). */
 	everyToolCalls: number;
-	/** Tail token budget (informational context for the judge). */
 	tailTokens: number;
+	/** Optional custom instruction for this check (from the command). */
+	instruction?: string;
 }
 
 const SCHEMA = `{
@@ -45,6 +46,14 @@ export function buildStablePrefix(inputs: PrefixInputs): string {
 	lines.push(``);
 	lines.push(`Do not mark a session off-track merely because an implementation is difficult, slow, or has encountered an ordinary recoverable error. Do not invent user intent: if recent activity makes the original goal ambiguous, say so in evidence. Distinguish concrete evidence from speculation.`);
 	lines.push(``);
+
+	if (inputs.instruction) {
+		lines.push(`### Extra instruction`);
+		lines.push(``);
+		lines.push(inputs.instruction);
+		lines.push(``);
+	}
+
 	lines.push(`### Original user intent`);
 	lines.push(``);
 	lines.push(inputs.intent.trim() || "(no user intent captured yet)");

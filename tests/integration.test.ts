@@ -252,6 +252,25 @@ test("status command reports usage totals and cache retention", async () => {
 	assert.ok(joined.includes("cache retention: short"));
 });
 
+test("bare-text instruction lands in the stable prefix", async () => {
+	const h = makeHarness();
+	fs.writeFileSync(path.join(h.cwd, "RULEZ.md"), "Always run tests.\n");
+	await h.start();
+	await h.command("on --every 1 --model anthropic/claude-3-5-haiku-latest check extra carefully @file/RULEZ.md");
+	await h.tool("bash");
+	await h.settle();
+	const call = h.registry.completeCalls.at(-1)!;
+	assert.ok(call.systemPrompt.includes("check extra carefully"));
+});
+
+test("--instruction flag works on a manual check", async () => {
+	const h = makeHarness();
+	await h.start();
+	await h.command("--instruction be strict --model anthropic/claude-3-5-haiku-latest");
+	const call = h.registry.completeCalls.at(-1)!;
+	assert.ok(call.systemPrompt.includes("be strict"));
+});
+
 test("model is not called before the threshold", async () => {
 	const h = makeHarness();
 	await h.start();
