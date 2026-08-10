@@ -67,6 +67,9 @@ export interface BabysitState {
 	instruction?: string;
 	/** Referenced files currently baked into the prefix. */
 	referencedFiles: string[];
+	/** Last activity tail size/truncation, for /babysit status diagnostics. */
+	lastTailLen?: number;
+	lastTailTruncated?: boolean;
 	usage: UsageTotals;
 	abortController?: AbortController;
 }
