@@ -14,26 +14,35 @@ You can also run a check by hand at any time.
 
 ## Install
 
-You can install from GitHub before copying to your extension folder:
+Install it as a Pi package:
 
 ```bash
-# Clone the repo
-
-git clone https://github.com/hypernewbie/pi-babysit.git
-cd pi-babysit
+pi install git:github.com/hypernewbie/pi-babysit
 ```
 
-To install for one project:
+`pi install` clones the repo, installs it, and adds it to `settings.json`.
+Pi loads it on the next session.
 
-1. Copy the `pi-babysit` directory to `.pi/extensions/pi-babysit`.
-2. Run `npm install --omit=dev` in that directory.
-3. Run `/reload` in Pi.
+For the current project only, add `-l`:
 
-For a global install:
+```bash
+pi install -l git:github.com/hypernewbie/pi-babysit
+```
 
-1. Copy the directory to `~/.pi/agent/extensions/pi-babysit`.
-2. Run `npm install --omit=dev` in that directory.
-3. Run `/reload` in Pi.
+Try it once without installing:
+
+```bash
+pi -e git:github.com/hypernewbie/pi-babysit
+```
+
+For local development, install the directory directly:
+
+```bash
+pi install /path/to/pi-babysit
+```
+
+The extension has no runtime npm dependencies, so no separate `npm install`
+is needed.
 
 ## Use it
 
