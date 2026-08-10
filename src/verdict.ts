@@ -27,28 +27,14 @@ export function parseVerdict(raw: string): BabysitVerdict {
 	const text = raw.trim();
 	if (!text) return UNCLEAR;
 
-	// Attempt 1: strict JSON.
-	let obj: unknown = null;
-	try {
-		obj = JSON.parse(text);
-	} catch {
-		obj = null;
-	}
+	// Attempt 1: strict JSON (with control-character repair as a fallback).
+	let obj: unknown = parseJsonOrRepair(text);
 
 	// Attempt 2: JSON inside a fenced code block.
 	if (obj === null) obj = extractFencedJson(text);
 
-	// Attempt 3: JSON embedded in prose (first { ... last }).
+	// Attempt 3: JSON embedded in prose (first { ... last }), repaired too.
 	if (obj === null) obj = extractEmbeddedJson(text);
-
-	// Attempt 4: repaired JSON (escaped control characters in strings).
-	if (obj === null) {
-		try {
-			obj = JSON.parse(repairControlChars(text));
-		} catch {
-			obj = null;
-		}
-	}
 
 	const verdict = coerceVerdict(obj);
 	if (verdict) return verdict;
@@ -66,11 +52,8 @@ export function extractFencedJson(text: string): unknown {
 	for (const m of text.matchAll(fence)) {
 		const body = m[1]?.trim();
 		if (!body) continue;
-		try {
-			return JSON.parse(body);
-		} catch {
-			// try the next fence
-		}
+		const obj = parseJsonOrRepair(body);
+		if (obj !== null) return obj;
 	}
 	return null;
 }
@@ -80,9 +63,18 @@ export function extractEmbeddedJson(text: string): unknown {
 	const start = text.indexOf("{");
 	const end = text.lastIndexOf("}");
 	if (start === -1 || end === -1 || end <= start) return null;
-	const candidate = text.slice(start, end + 1);
+	return parseJsonOrRepair(text.slice(start, end + 1));
+}
+
+/** JSON.parse with control-character repair as a fallback. Returns null on failure. */
+function parseJsonOrRepair(candidate: string): unknown {
 	try {
 		return JSON.parse(candidate);
+	} catch {
+		// fallthrough to repaired parse
+	}
+	try {
+		return JSON.parse(repairControlChars(candidate));
 	} catch {
 		return null;
 	}

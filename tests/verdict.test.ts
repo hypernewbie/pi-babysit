@@ -100,6 +100,12 @@ test("control characters inside strings are repaired", () => {
 	assert.equal(v.status, "on_track");
 });
 
+test("fenced JSON with control characters parses", () => {
+	const raw = '```json\n{"status":"on_track","confidence":0.9,"summary":"line one\nline two","evidence":[],"recommendation":""}\n```';
+	const v = parseVerdict(raw);
+	assert.equal(v.status, "on_track");
+});
+
 test("missing confidence defaults to 0.5", () => {
 	const v = parseVerdict(JSON.stringify({ status: "on_track", summary: "aligned", evidence: [] }));
 	assert.equal(v.status, "on_track");

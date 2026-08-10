@@ -57,7 +57,7 @@ export interface ModelRegistryCtx {
 	};
 }
 
-const DEFAULT_MAX_TOKENS = 300;
+const DEFAULT_MAX_TOKENS = 800;
 
 /** Find the configured model; returns { ok: false, error } on any problem. */
 export function resolveModel(ctx: ModelRegistryCtx, modelId: string): { ok: true; model: unknown } | { ok: false; error: string } {

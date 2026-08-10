@@ -80,6 +80,7 @@ export function buildStablePrefix(inputs: PrefixInputs): string {
 	lines.push(`- confidence: 0..1.`);
 	lines.push(`- evidence: specific observations from the activity you were given.`);
 	lines.push(`- recommendation: one clear next action for the user.`);
+	lines.push(`Keep summary to one short sentence and evidence to at most two items, so the JSON stays compact.`);
 	lines.push(``);
 	lines.push(`The activity below may be truncated, and tool outputs may be noisy or incomplete. Base your judgment on what is visible; note missing context in evidence when it matters.`);
 
