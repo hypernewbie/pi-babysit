@@ -2,16 +2,6 @@
 
 pi-babysit watches your Pi session in the background. A second (cheaper) model enforces the session rules you set — an inline rule like `do not talk about the roman empire`, or project rules from `@file/` references. It reports drift in the footer, and when enabled (`--steer`) it injects a reminder into the session that the agent must answer. It never edits files or runs tools.
 
-## How it works
-
-Each check sends two parts to the babysitter model. The first part never changes between checks. It contains the role, the rubric, the session rules, the files you referenced, and the JSON format the model must use. Because this part is stable, Pi can reuse the prompt cache.
-
-The second part changes each time. It contains recent user and assistant messages (conversation only — tool calls and results are excluded) and the count of tools since the last check.
-
-Pi counts completed tools. When the count reaches the threshold, Pi runs the next check at the end of the turn. Pi waits for the check to complete before it starts the next turn. Only one check runs per turn, even when tools run in parallel. The remainder carries to the next cycle.
-
-You can also run a check by hand at any time.
-
 ## Install
 
 Install it as a Pi package:
