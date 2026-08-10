@@ -183,6 +183,12 @@ async function runCheck(
 			setStatus?(key: string, text?: string): void;
 		};
 		signal?: AbortSignal;
+	},
+	opts: {
+		refs?: string[];
+		model?: string;
+		fromCounter: boolean;
+		appendEntry: (type: string, data: unknown) => void;
 		sendMessage?: (message: {
 			customType: string;
 			content: string;
@@ -190,7 +196,6 @@ async function runCheck(
 			details?: unknown;
 		}, options?: { triggerTurn?: boolean }) => void;
 	},
-	opts: { refs?: string[]; model?: string; fromCounter: boolean; appendEntry: (type: string, data: unknown) => void },
 ): Promise<void> {
 	const st = babysitter.state;
 	if (st.checkInFlight) {
@@ -297,7 +302,7 @@ async function runCheck(
 		st.activitySummary = `check #${st.checkCount}: ${verdict.status} — ${verdict.summary.replace(/\s+/g, " ").trim()}`;
 
 		reportVerdict(ctx, verdict, mid, st.checkCount, result.usage, durationMs, prefixChanged);
-		maybeSteer(babysitter, ctx, verdict);
+		maybeSteer(babysitter, opts.sendMessage, verdict);
 		if (babysitter.config.persistVerdicts) {
 			opts.appendEntry(CUSTOM_ENTRY_TYPE, {
 				verdict,
@@ -339,14 +344,12 @@ const VERDICT_GLYPH: Record<string, string> = {
  */
 function maybeSteer(
 	babysitter: Babysitter,
-	ctx: {
-		sendMessage?: (message: {
-			customType: string;
-			content: string;
-			display: boolean;
-			details?: unknown;
-		}, options?: { triggerTurn?: boolean }) => void;
-	},
+	send: (message: {
+		customType: string;
+		content: string;
+		display: boolean;
+		details?: unknown;
+	}, options?: { triggerTurn?: boolean }) => void | undefined,
 	verdict: BabysitVerdict,
 ): void {
 	const st = babysitter.state;
@@ -355,7 +358,6 @@ function maybeSteer(
 	const text = buildSteerMessage(verdict, st.instruction);
 	st.lastSteerAt = Date.now();
 	st.lastSteerText = text;
-	const send = ctx.sendMessage;
 	if (typeof send !== "function") return;
 	setTimeout(() => {
 		send(
@@ -473,6 +475,7 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 		await runCheck(babysitter, ctx, {
 			fromCounter: true,
 			appendEntry: (type, data) => pi.appendEntry(type, data),
+			sendMessage: (message, options) => pi.sendMessage(message, options),
 		});
 	});
 
@@ -486,6 +489,7 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 		await runCheck(babysitter, ctx, {
 			fromCounter: true,
 			appendEntry: (type, data) => pi.appendEntry(type, data),
+			sendMessage: (message, options) => pi.sendMessage(message, options),
 		});
 	});
 
@@ -500,7 +504,13 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 				case "now": {
 					if (parsed.instruction) babysitter.state.instruction = parsed.instruction;
 					await ctx.waitForIdle();
-					await runCheck(babysitter, ctx, { refs: parsed.refs, model: parsed.model, fromCounter: false, appendEntry });
+					await runCheck(babysitter, ctx, {
+						refs: parsed.refs,
+						model: parsed.model,
+						fromCounter: false,
+						appendEntry,
+						sendMessage: (message, options) => pi.sendMessage(message, options),
+					});
 					break;
 				}
 				case "on": {

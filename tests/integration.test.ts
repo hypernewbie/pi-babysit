@@ -413,12 +413,13 @@ test("steering injects a reminder into the session on off_track", async () => {
 	await new Promise((r) => setTimeout(r, 10));
 
 	assert.equal(h.api.sentMessages.length, 1);
-	const sent = h.api.sentMessages[0] as { message: Record<string, unknown>; options: Record<string, unknown> };
-	assert.equal(sent.options.triggerTurn, true);
-	assert.equal(sent.message.customType, "babysit.steer");
-	assert.ok(String(sent.message.content).includes("REMINDER: YOU ARE OFF TRACK FROM USER INTENT."));
-	assert.ok(String(sent.message.content).includes("do not talk about the roman empire"));
-	assert.ok(String(sent.message.content).includes("YOU MUST REPLY TO THIS MESSAGE"));
+	const args = h.api.sentMessages[0] as [Record<string, unknown>, Record<string, unknown>];
+	const [message, options] = args;
+	assert.equal(options.triggerTurn, true);
+	assert.equal(message.customType, "babysit.steer");
+	assert.ok(String(message.content).includes("REMINDER: YOU ARE OFF TRACK FROM USER INTENT."));
+	assert.ok(String(message.content).includes("do not talk about the roman empire"));
+	assert.ok(String(message.content).includes("YOU MUST REPLY TO THIS MESSAGE"));
 });
 
 test("steering is disabled by default (advisory only)", async () => {
@@ -457,6 +458,6 @@ test("steer=concern triggers on concern verdicts", async () => {
 	await new Promise((r) => setTimeout(r, 10));
 
 	assert.equal(h.api.sentMessages.length, 1);
-	const sent = h.api.sentMessages[0] as { message: Record<string, unknown>; options: Record<string, unknown> };
-	assert.ok(String(sent.message.content).includes("YOU MAY BE OFF TRACK FROM USER INTENT."));
+	const args = h.api.sentMessages[0] as [Record<string, unknown>, Record<string, unknown>];
+	assert.ok(String(args[0].content).includes("YOU MAY BE OFF TRACK FROM USER INTENT."));
 });
