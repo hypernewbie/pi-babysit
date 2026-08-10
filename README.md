@@ -1,77 +1,63 @@
 # pi-babysit
 
-A read-only drift health check for [Pi](https://github.com/earendil-works/pi)
-coding sessions. A separately configured (usually cheaper) model periodically
-judges whether the active session is still aligned with the user's original
-intent and with explicit project rules. It **reports** drift — it never edits
-files, invokes tools, steers the main agent, or injects messages.
+pi-babysit watches your Pi session in the background. A second model checks whether the work still matches your original intent and your project rules. It only reports drift. It never edits files, runs tools, or steers the agent.
 
 ## How it works
 
-Every check sends two parts to the babysitter model:
+Each check sends two parts to the babysitter model. The first part never changes between checks. It contains the role, the rubric, your original request, the files you referenced, and the JSON format the model must use. Because this part is stable, Pi can reuse the prompt cache.
 
-1. **Stable prefix** (byte-identical between checks): the babysitter role and
-   rubric, the original user intent (captured once per session), the contents
-   of referenced `@file/...` files, and the strict JSON response contract.
-   Because it is stable, provider prompt caches can hit on it.
-2. **Dynamic suffix**: a bounded, chronological tail of recent session
-   activity (user/assistant messages, tool names, truncated results, errors),
-   plus the number of tools since the last check and the previous verdict.
+The second part changes each time. It contains recent messages, tool names, truncated results, errors, and the count of tools since the last check.
 
-Checks run:
+Pi counts completed tools. When the count reaches the threshold, Pi runs the next check at the end of the turn. Pi waits for the check to complete before it starts the next turn. Only one check runs per turn, even when tools run in parallel. The remainder carries to the next cycle.
 
-- manually with `/babysit now` (after `ctx.waitForIdle()`), or
-- automatically: completed tool executions are counted (`tool_execution_end`),
-  and when the threshold is crossed the check runs **awaited at `turn_end`**,
-  after Pi has persisted the current tool results and before it prepares the
-  next model turn. Only one check runs per turn, even for parallel batches;
-  the remainder (`count % every`) carries to the next crossing.
+You can also run a check by hand at any time.
 
 ## Install
 
-Drop the package into an extension location and install its dev-free runtime
-(no runtime deps beyond Pi itself):
+You can install from GitHub before copying to your extension folder:
 
 ```bash
-# project-local (loads after the project is trusted)
-mkdir -p .pi/extensions && cp -r pi-babysit .pi/extensions/pi-babysit
-cd .pi/extensions/pi-babysit && npm install --omit=dev
+# Clone the repo
 
-# or global
-cp -r pi-babysit ~/.pi/agent/extensions/pi-babysit
-cd ~/.pi/agent/extensions/pi-babysit && npm install --omit=dev
+git clone https://github.com/hypernewbie/pi-babysit.git
+cd pi-babysit
 ```
 
-Reload with `/reload`.
+To install for one project:
 
-## Usage
+1. Copy the `pi-babysit` directory to `.pi/extensions/pi-babysit`.
+2. Run `npm install --omit=dev` in that directory.
+3. Run `/reload` in Pi.
+
+For a global install:
+
+1. Copy the directory to `~/.pi/agent/extensions/pi-babysit`.
+2. Run `npm install --omit=dev` in that directory.
+3. Run `/reload` in Pi.
+
+## Use it
 
 ```text
-/babysit                                immediate check
-/babysit now @file/RULEZ.md             immediate check with a rule file
-/babysit now @file/RULEZ.md @file/PROJECT_NOTES.md
-/babysit now --tail-tokens 6000
+/babysit
+/babysit now @file/RULEZ.md
+/babysit now @file/RULEZ.md @file/NOTES.md
 /babysit on --every 5 --model anthropic/claude-3-5-haiku-latest
 /babysit off
 /babysit status
 ```
 
-Flags:
+Options:
 
-| Flag | Meaning |
-| --- | --- |
-| `--every N` | auto-check after N completed tool executions (default 5) |
-| `--model provider/model-id` | babysitter model (overrides config) |
-| `--tail-tokens N` | dynamic suffix budget in estimated tokens (default 6000) |
-| `@file/path` | include a file's contents in the stable prefix |
+- `--every N`: check after N completed tools. Default is 5.
+- `--model provider/model-id`: babysitter model for this session.
+- `--tail-tokens N`: token budget for recent activity. Default is 6000.
+- `@file/path`: add a file to the stable prefix.
 
-`@file` paths are relative to the session's working directory; absolute paths
-work too (`@file//tmp/notes.md`). Files are deduplicated, size-limited
-(default 64 KiB each, 128 KiB total), and re-read only when they change.
+Paths after `@file/` are relative to the session directory. Absolute paths also work. Pi removes duplicates, enforces size limits, and reloads a file only when the file changes.
 
-### Project config
+## Configuration
 
-`.pi/babysit.json` (all optional):
+You can set defaults in `.pi/babysit.json`. All fields are optional.
 
 ```json
 {
@@ -90,23 +76,13 @@ work too (`@file//tmp/notes.md`). Files are deduplicated, size-limited
 }
 ```
 
-- `cacheRetention`: `"short"` (default) for checks every few tools; `"long"`
-  for intervals that outlive the short cache TTL — long writes cost more.
-  `"none"` disables provider prompt caching.
-- `persistVerdicts`: append each verdict as a non-LLM custom session entry
-  (`customType: "babysit-check"`) for history/status views.
-- `runAfterSettle`: also run a pending check at `agent_settled` (after the
-  whole agent run settles) — lower latency-insensitive mode.
+`cacheRetention` controls prompt cache use. Use `short` for frequent checks. Use `long` when checks are far apart. Use `none` to disable cache use. Long writes cost more.
 
-## Model
-
-Any Pi-configured model works; the babysitter request has no tools, caps
-output at 300 tokens, uses `temperature: 0`, and never changes the session's
-main model. `modelRegistry.hasConfiguredAuth()` is checked as a preflight.
+`persistVerdicts` saves each result as a custom session entry. `runAfterSettle` also runs a pending check after the full agent run completes.
 
 ## Verdicts
 
-The model must return strict JSON:
+The babysitter returns strict JSON:
 
 ```json
 {
@@ -118,44 +94,25 @@ The model must return strict JSON:
 }
 ```
 
-`status` is one of `on_track | concern | off_track | unclear`. Malformed
-responses become `unclear` — never `off_track`. Request failures
-(`stopReason: "error" | "aborted"`) are reported as errors and are never
-parsed as verdicts.
+`status` is one of `on_track`, `concern`, `off_track`, or `unclear`. A broken response becomes `unclear`. It never becomes `off_track` by default. A failed request is an error, not a verdict.
 
-## Privacy & cost
+## Privacy and cost
 
-- Referenced `@file/...` contents and the recent-activity tail are sent to
-  the configured babysitter provider. The prefix is *not* the full system
-  prompt — it is the babysitter's own instructions plus whatever you
-  explicitly reference.
-- Each check is a separate model call with its own cost. `cacheRetention:
-  "short"` keeps per-check cost low when the prefix is stable.
-- Babysitter usage is tracked independently and shown in `/babysit status`
-  (it is not a Pi tool result, so it does not appear in Pi's normal session
-  usage totals).
+Only two things leave your machine: the files you reference with `@file/` and the recent activity tail. Pi does not send the full system prompt. Each check is a separate model call with its own cost. The prompt cache keeps cost low when the stable prefix does not change. Use `/babysit status` to see total input, output, cache use, and cost for babysitter calls. This total is separate from Pi's main session total.
 
-## Development
+## Develop
 
-```bash
-npm install
-npm run typecheck   # tsc --noEmit
-npm test            # node --test (native TS, no test framework)
-npm pack --dry-run
-```
+To work on the extension, do these steps:
 
-## Design notes
+1. Run `npm install` in the extension directory.
+2. Run `npm run typecheck` to check types.
+3. Run `npm test` to run tests.
+4. Run `npm pack --dry-run` to inspect the package.
 
-- `turn_end` handlers are awaited by Pi before it prepares the next model
-  turn, and tool-result messages are already persisted to the session tree by
-  then — so the automatic check is a true gate over a coherent snapshot.
-  `agent_settled` is intentionally *not* the primary hook: it fires only after
-  the entire run (retries, compaction retries, queued continuations) settles,
-  which is too late for periodic checks.
-- The extension-facing `ReadonlySessionManager` has no `buildSessionContext()`;
-  the dynamic tail is built from `buildContextEntries()` instead.
-- Advisory mode is the default: a `concern`/`off_track` notification does not
-  pause the agent. A future opt-in guard mode could `ctx.abort()` the active
-  run on `off_track`; that is a deliberate, separate feature.
+## Notes
 
-See `PI_BABYSIT_PLAN.md` for the full design and open product decisions.
+`turn_end` handlers run before Pi starts the next turn. At that point, tool results are already in the session tree. For periodic checks, use `turn_end` as the main hook. `agent_settled` fires later, after retries and continuations settle.
+
+The extension is advisory only. A `concern` or `off_track` result shows a notice. It does not stop the agent.
+
+See `PI_BABYSIT_PLAN.md` for the full plan.
