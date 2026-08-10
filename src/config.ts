@@ -18,10 +18,6 @@ export interface BabysitConfig {
 	maxFileBytes: number;
 	/** Total size limit across all reference files in one prefix. */
 	maxTotalRefBytes: number;
-	/** Max characters kept from a single tool result in the activity tail. */
-	maxToolResultChars: number;
-	/** Max tool results kept per normalized message. */
-	maxToolResults: number;
 	/** Persist each verdict as a non-LLM custom session entry. */
 	persistVerdicts: boolean;
 	/** Also run a pending check at agent_settled (after the whole run settles). */
@@ -38,10 +34,6 @@ export const DEFAULT_CONFIG: BabysitConfig = {
 	rules: [],
 	maxFileBytes: 64 * 1024,
 	maxTotalRefBytes: 128 * 1024,
-	// Keep tool results short so the tail budget stays with the conversation
-	// (the actual drift signal) instead of raw file contents from reads.
-	maxToolResultChars: 1000,
-	maxToolResults: 2,
 	persistVerdicts: false,
 	runAfterSettle: false,
 	cacheRetention: "short",

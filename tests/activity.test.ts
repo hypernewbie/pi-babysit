@@ -27,17 +27,36 @@ function branchSummary(summary: string): ActivityEntry {
 	return { type: "branch_summary", summary };
 }
 
-function opts(overrides: Partial<{ maxChars: number; maxToolResultChars: number; maxToolResults: number }> = {}) {
-	return { maxChars: 100000, maxToolResultChars: 40, maxToolResults: 3, ...overrides };
+function opts(overrides: Partial<{ maxChars: number }> = {}) {
+	return { maxChars: 100000, ...overrides };
 }
 
-test("normalizes user/assistant/tool messages in order", () => {
-	const entries = [user("fix the bug"), assistant("looking", [{ name: "bash", args: { command: "make test" } }]), toolResult("bash", "ok", true)];
+test("tool calls and tool results are excluded from the eval", () => {
+	const entries = [
+		user("fix the bug"),
+		assistant("looking", [{ name: "bash", args: { command: "make test" } }]),
+		toolResult("bash", "ok", true),
+	];
 	const { events } = normalizeEntries(entries, opts());
 	assert.deepEqual(
 		events.map((e) => e.text),
-		["User: fix the bug", "Assistant: looking\n→ bash({\"command\":\"make test\"})", "Tool bash (ERROR): ok"],
+		["User: fix the bug", "Assistant: looking"],
 	);
+});
+
+test("conversation-only tail has no tool content", () => {
+	const entries = [
+		user("fix the bug"),
+		assistant("looking", [{ name: "bash", args: { command: "make test" } }]),
+		toolResult("read", "x".repeat(200)),
+		toolResult("read", "y".repeat(200)),
+	];
+	const r = buildActivityTail(entries, opts());
+	assert.ok(r.text.includes("fix the bug"));
+	assert.ok(r.text.includes("looking"));
+	assert.ok(!r.text.includes("→ bash"));
+	assert.ok(!r.text.includes("Tool "));
+	assert.equal(r.truncated, false);
 });
 
 test("thinking blocks are stripped", () => {
@@ -47,12 +66,6 @@ test("thinking blocks are stripped", () => {
 	};
 	const { events } = normalizeEntries([entry], opts());
 	assert.deepEqual(events.map((e) => e.text), ["Assistant: visible"]);
-});
-
-test("tool result text is truncated to budget", () => {
-	const r = buildActivityTail([toolResult("read", "x".repeat(200))], opts({ maxToolResultChars: 40 }));
-	assert.ok(r.text.includes("x".repeat(40) + "…"));
-	assert.equal(r.truncated, true);
 });
 
 test("custom and label entries are ignored", () => {
@@ -66,29 +79,4 @@ test("compaction and branch summaries surface", () => {
 	const { events } = normalizeEntries(entries, opts());
 	assert.ok(events[0]!.text.startsWith("[context compacted]"));
 	assert.ok(events[1]!.text.startsWith("[abandoned branch]"));
-});
-
-test("budget drops oldest content but keeps the newest user message", () => {
-	const entries = [user("old goal"), assistant("work1"), assistant("work2"), user("latest instruction")];
-	const r = buildActivityTail(entries, opts({ maxChars: 20 }));
-	assert.ok(r.text.includes("latest instruction"), "newest user message survives");
-	assert.ok(!r.text.includes("old goal"), "old user message dropped when over budget");
-	assert.equal(r.dropped >= 1, true);
-});
-
-test("empty input produces placeholder", () => {
-	const r = buildActivityTail([], opts());
-	assert.equal(r.text, "(no recent activity)");
-});
-
-test("tool result cap per run", () => {
-	const entries = [toolResult("bash", "a"), toolResult("bash", "b"), toolResult("bash", "c"), toolResult("bash", "d")];
-	const { events } = normalizeEntries(entries, opts({ maxToolResults: 2 }));
-	assert.equal(events.length, 2);
-});
-
-test("output is chronological", () => {
-	const entries = [user("first"), user("second")];
-	const r = buildActivityTail(entries, opts());
-	assert.ok(r.text.indexOf("first") < r.text.indexOf("second"));
 });

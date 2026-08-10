@@ -237,8 +237,6 @@ async function runCheck(
 		// Dynamic tail from the active session context.
 		const tailOpts = {
 			maxChars: babysitter.config.tailTokens * 4,
-			maxToolResultChars: babysitter.config.maxToolResultChars,
-			maxToolResults: babysitter.config.maxToolResults,
 		};
 		const tail = buildActivityTail(ctx.sessionManager.buildContextEntries() as ActivityEntry[], tailOpts);
 		st.lastTailLen = tail.text.length;

@@ -25,10 +25,6 @@ export interface ActivityEntry {
 export interface ActivityOptions {
 	/** Maximum total characters in the tail (~4 chars/token). */
 	maxChars: number;
-	/** Maximum characters kept from a single tool result. */
-	maxToolResultChars: number;
-	/** Maximum tool results kept per normalized message. */
-	maxToolResults: number;
 }
 
 export interface ActivityResult {
@@ -36,7 +32,7 @@ export interface ActivityResult {
 	text: string;
 	/** Number of normalized entries dropped by the budget. */
 	dropped: number;
-	/** True when any tool result was truncated. */
+	/** True when the tail was truncated by the budget (kept for status diagnostics). */
 	truncated: boolean;
 }
 
@@ -65,26 +61,10 @@ export function contentText(content: unknown): string {
 		if (block.type === "text" && typeof block.text === "string") {
 			parts.push(block.text);
 		}
-		// thinking / reasoning blocks are stripped on purpose.
+		// thinking / reasoning / toolCall / toolResult blocks are excluded on
+		// purpose: the eval sees conversation only.
 	}
 	return parts.join("\n");
-}
-
-/** Compact a toolCall block into "name(args)" with truncated JSON args. */
-function toolCallText(block: ContentBlock, maxArgs: number): string {
-	let args = "";
-	if (block.arguments !== undefined) {
-		try {
-			args = JSON.stringify(block.arguments);
-		} catch {
-			args = String(block.arguments);
-		}
-	}
-	if (args.length > maxArgs) {
-		args = args.slice(0, maxArgs) + "…";
-	}
-	const name = block.name || "tool";
-	return `→ ${name}(${args})`;
 }
 
 function truncate(s: string, max: number): string {
@@ -92,26 +72,15 @@ function truncate(s: string, max: number): string {
 	return s.slice(0, max) + "…";
 }
 
-function extractToolCallLines(content: unknown): string[] {
-	if (!Array.isArray(content)) return [];
-	const lines: string[] = [];
-	for (const part of content) {
-		if (!part || typeof part !== "object") continue;
-		const block = part as ContentBlock;
-		if (block.type === "toolCall") {
-			lines.push(toolCallText(block, 300));
-		}
-	}
-	return lines;
-}
-
 /**
  * Normalize session entries into ordered, text-only events.
- * Returns the events plus a flag for any truncated tool result.
+ *
+ * Only user and assistant text is kept. Tool calls, tool results, and any
+ * tool-related content are excluded entirely: the check evaluates the
+ * conversation, not what tools were used.
  */
-export function normalizeEntries(entries: ActivityEntry[], opts: ActivityOptions): { events: NormalizedEvent[]; truncated: boolean } {
+export function normalizeEntries(entries: ActivityEntry[], opts: ActivityOptions): { events: NormalizedEvent[] } {
 	const events: NormalizedEvent[] = [];
-	let truncated = false;
 
 	for (const entry of entries) {
 		if (entry.type === "message") {
@@ -124,22 +93,9 @@ export function normalizeEntries(entries: ActivityEntry[], opts: ActivityOptions
 				if (text) events.push({ text: `User: ${text}`, isUser: true });
 			} else if (role === "assistant") {
 				const text = contentText(msg.content).trim();
-				const toolCalls = extractToolCallLines(msg.content);
-				const parts: string[] = [];
-				if (text) parts.push(text);
-				parts.push(...toolCalls);
-				const joined = parts.join("\n").trim();
-				if (joined) events.push({ text: `Assistant: ${joined}`, isUser: false });
-			} else if (role === "toolResult") {
-				const toolName = msg.toolName ?? "tool";
-				const raw = contentText(msg.content).trim();
-				const isError = msg.isError === true;
-				if (raw.length > opts.maxToolResultChars) truncated = true;
-				const truncatedResult = truncate(raw, opts.maxToolResultChars);
-				const flag = isError ? " (ERROR)" : "";
-				const text = raw ? `Tool ${toolName}${flag}: ${truncatedResult}` : `Tool ${toolName}${flag}`;
-				events.push({ text, isUser: false });
+				if (text) events.push({ text: `Assistant: ${text}`, isUser: false });
 			}
+			// toolResult and other roles: excluded.
 		} else if (entry.type === "compaction") {
 			const summary = entry.summary?.trim();
 			if (summary) events.push({ text: `[context compacted] ${truncate(summary, 4000)}`, isUser: false });
@@ -147,36 +103,21 @@ export function normalizeEntries(entries: ActivityEntry[], opts: ActivityOptions
 			const summary = entry.summary?.trim();
 			if (summary) events.push({ text: `[abandoned branch] ${truncate(summary, 2000)}`, isUser: false });
 		}
-		// custom / label / model_change / thinking_level_change / session_info: ignored.
+		// custom / label / toolResult / tool calls / model_change / thinking_level_change / session_info: ignored.
 	}
 
-	// Cap consecutive tool results per run.
-	const kept: NormalizedEvent[] = [];
-	let toolResultRun = 0;
-	for (const ev of events) {
-		if (ev.text.startsWith("Tool ")) {
-			toolResultRun++;
-			if (toolResultRun > opts.maxToolResults) continue;
-		} else {
-			toolResultRun = 0;
-		}
-		kept.push(ev);
-	}
-
-	return { events: kept, truncated };
+	return { events };
 }
 
 /**
  * Build a bounded activity tail: keep entries newest-first until the budget
- * is exhausted (user messages always kept), then emit in chronological order.
+ * is exhausted (only the newest user message is force-kept), then emit in
+ * chronological order. Conversation only — no tool content.
  */
 export function buildActivityTail(entries: ActivityEntry[], opts: ActivityOptions): ActivityResult {
-	const { events, truncated } = normalizeEntries(entries, opts);
+	const { events } = normalizeEntries(entries, opts);
 	if (events.length === 0) return { text: "(no recent activity)", dropped: 0, truncated: false };
 
-	// Walk newest-first, claiming budget. Only the newest user message is
-	// force-kept; everything else (including older user messages) must fit
-	// the budget, so the tail stays bounded.
 	let budget = opts.maxChars;
 	let dropped = 0;
 	let newestUserKept = false;
@@ -198,5 +139,5 @@ export function buildActivityTail(entries: ActivityEntry[], opts: ActivityOption
 
 	claimed.reverse();
 	const text = claimed.map((e) => e.text).join("\n");
-	return { text, dropped, truncated };
+	return { text, dropped, truncated: false };
 }
