@@ -344,12 +344,12 @@ const VERDICT_GLYPH: Record<string, string> = {
  */
 function maybeSteer(
 	babysitter: Babysitter,
-	send: (message: {
+	send: ((message: {
 		customType: string;
 		content: string;
 		display: boolean;
 		details?: unknown;
-	}, options?: { triggerTurn?: boolean }) => void | undefined,
+	}, options?: { triggerTurn?: boolean }) => void) | undefined,
 	verdict: BabysitVerdict,
 ): void {
 	const st = babysitter.state;
