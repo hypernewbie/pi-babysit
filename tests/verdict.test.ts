@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseVerdict, coerceVerdict, extractFencedJson, UNCLEAR } from "../src/verdict.ts";
+import { parseVerdict, coerceVerdict, extractFencedJson, extractEmbeddedJson, repairControlChars, UNCLEAR } from "../src/verdict.ts";
 
 const VALID = {
 	status: "on_track",
@@ -78,6 +78,43 @@ test("extractFencedJson returns first valid object", () => {
 	const raw = "a\n```json\n{\"status\":\"on_track\"}\n```\n```json\n{\"status\":\"concern\"}\n```";
 	const obj = extractFencedJson(raw) as { status: string };
 	assert.equal(obj.status, "on_track");
+});
+
+test("embedded JSON in prose parses", () => {
+	const raw = 'Here is my assessment: {"status":"on_track","confidence":0.9,"summary":"aligned","evidence":[],"recommendation":""} Hope that helps.';
+	const v = parseVerdict(raw);
+	assert.equal(v.status, "on_track");
+});
+
+test("extractEmbeddedJson finds first { to last }", () => {
+	const raw = 'x {"status":"on_track"} y';
+	const obj = extractEmbeddedJson(raw) as { status: string };
+	assert.equal(obj.status, "on_track");
+});
+
+test("control characters inside strings are repaired", () => {
+	const raw = '{"status":"on_track","confidence":0.9,"summary":"line one\nline two","evidence":[],"recommendation":""}';
+	const repaired = repairControlChars(raw);
+	assert.ok(!/\n/.test(repaired.replace(/\\n/g, "")), "no raw newline left");
+	const v = parseVerdict(raw);
+	assert.equal(v.status, "on_track");
+});
+
+test("missing confidence defaults to 0.5", () => {
+	const v = parseVerdict(JSON.stringify({ status: "on_track", summary: "aligned", evidence: [] }));
+	assert.equal(v.status, "on_track");
+	assert.equal(v.confidence, 0.5);
+});
+
+test("status is case-insensitive and trimmed", () => {
+	const v = parseVerdict(JSON.stringify({ status: "  On_Track ", confidence: 0.8, summary: "ok" }));
+	assert.equal(v.status, "on_track");
+});
+
+test("unclear includes a raw snippet", () => {
+	const v = parseVerdict("sorry, no json here");
+	assert.equal(v.status, "unclear");
+	assert.ok(v.summary.includes("sorry, no json here"));
 });
 
 test("UNCLEAR constant is stable", () => {
