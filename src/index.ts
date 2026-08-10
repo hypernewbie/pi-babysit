@@ -454,7 +454,8 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 	pi.on("session_start", (event: SessionStartEvent, ctx: ExtensionContext) => {
 		rebind(ctx);
 		if (!ctx.hasUI) log(`session_start (${event.reason}); babysitter ${babysitter.config.enabled ? "enabled" : "disabled"}`);
-		setStatus(ctx, `${BABY} babysit off`);
+		// No permanent footer when off; show a status only when actually on.
+		setStatus(ctx, babysitter.config.enabled ? `${BABY} babysit on` : undefined);
 	});
 
 	pi.on("session_shutdown", (_event: SessionShutdownEvent, _ctx: ExtensionContext) => {
@@ -553,7 +554,7 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 					babysitter.state.enabled = false;
 					babysitter.counter.setEnabled(false);
 					notify(ctx, `${BABY} babysit off`, "info");
-					setStatus(ctx, `${BABY} babysit off`);
+					setStatus(ctx, undefined); // clear the footer; no permanent "off" status
 					break;
 				}
 				case "status": {
