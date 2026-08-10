@@ -18,6 +18,7 @@ interface MockApi {
 	commands: Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>;
 	entries: Array<{ type: string; data: unknown }>;
 	sentMessages: unknown[];
+	notices: Array<{ message: string; type?: string }>;
 	on(event: string, handler: Handler): void;
 	registerCommand(name: string, opts: { handler: (args: string, ctx: unknown) => Promise<void> }): void;
 	appendEntry(type: string, data: unknown): void;
@@ -31,6 +32,7 @@ function makeApi(): MockApi {
 		commands: new Map(),
 		entries: [],
 		sentMessages: [],
+		notices: [],
 		on(event, handler) {
 			api.handlers.set(event, handler);
 		},
@@ -133,7 +135,11 @@ function makeHarness(): Harness {
 		hasUI: true,
 		cwd,
 		signal: undefined,
-		ui: { notify: () => {} },
+		ui: {
+			notify(message: string, type?: string) {
+				api.notices.push({ message, type });
+			},
+		},
 		sessionManager: {
 			getSessionId: () => "sess-1",
 			getLeafId: () => "leaf1",
@@ -239,19 +245,11 @@ test("status command reports usage totals and cache retention", async () => {
 	const h = makeHarness();
 	await h.start();
 	await h.command("now --model anthropic/claude-3-5-haiku-latest");
-	let statusOut = "";
-	const orig = console.log;
-	console.log = (s: string) => {
-		statusOut += String(s) + "\n";
-	};
-	try {
-		await h.command("status");
-	} finally {
-		console.log = orig;
-	}
-	assert.ok(statusOut.includes("checks run: 1"));
-	assert.ok(statusOut.includes("cacheRead=2"));
-	assert.ok(statusOut.includes("cache retention: short"));
+	await h.command("status");
+	const joined = h.api.notices.map((n) => n.message).join("\n");
+	assert.ok(joined.includes("checks run: 1"));
+	assert.ok(joined.includes("cacheRead=2"));
+	assert.ok(joined.includes("cache retention: short"));
 });
 
 test("model is not called before the threshold", async () => {

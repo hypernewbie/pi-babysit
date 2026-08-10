@@ -316,19 +316,9 @@ function reportVerdict(
 	const { status } = verdict;
 	const summary = verdict.summary.replace(/\s+/g, " ").trim();
 	const cacheLine = `cache read=${usage.cacheRead} write=${usage.cacheWrite}${prefixChanged ? " (prefix changed)" : ""}`;
-
-	if (status === "on_track") {
-		notify(ctx, `babysit on_track (${modelId}): ${summary}`, "info");
-	} else if (status === "concern") {
-		notify(ctx, `babysit concern (${modelId}): ${summary}`, "warning");
-	} else if (status === "off_track") {
-		const evidence = verdict.evidence.slice(0, 3).map((e) => `- ${e}`).join("\n");
-		const msg = `babysit off_track (${modelId}): ${summary}${evidence ? `\n${evidence}` : ""}\nRecommendation: ${verdict.recommendation}`;
-		notify(ctx, msg, "warning");
-	} else {
-		notify(ctx, `babysit unclear (${modelId}): ${summary}`, "info");
-	}
-	log(`check #${checkIndex} ${status} in ${durationMs}ms (${modelId}) — ${cacheLine}`);
+	// Verbose detail: only to stdout in headless modes; in the TUI raw
+	// console output corrupts the interface, so the notify above is enough.
+	if (!ctx.hasUI) log(`check #${checkIndex} ${status} in ${durationMs}ms (${modelId}) — ${cacheLine}`);
 }
 
 function statusReport(babysitter: Babysitter): string {
@@ -363,7 +353,7 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 
 	pi.on("session_start", (event: SessionStartEvent, ctx: ExtensionContext) => {
 		rebind(ctx);
-		log(`session_start (${event.reason}); babysitter ${babysitter.config.enabled ? "enabled" : "disabled"}`);
+		if (!ctx.hasUI) log(`session_start (${event.reason}); babysitter ${babysitter.config.enabled ? "enabled" : "disabled"}`);
 	});
 
 	pi.on("session_shutdown", (_event: SessionShutdownEvent, _ctx: ExtensionContext) => {
@@ -437,8 +427,7 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 				case "status": {
 					const report = statusReport(babysitter);
 					if (ctx.hasUI) {
-						notify(ctx, report.split("\n")[0] ?? report, "info");
-						log(report);
+						notify(ctx, report, "info");
 					} else {
 						console.log(report);
 					}
