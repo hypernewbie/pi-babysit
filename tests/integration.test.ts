@@ -19,6 +19,7 @@ interface MockApi {
 	entries: Array<{ type: string; data: unknown }>;
 	sentMessages: unknown[];
 	notices: Array<{ message: string; type?: string }>;
+	statuses: string[];
 	on(event: string, handler: Handler): void;
 	registerCommand(name: string, opts: { handler: (args: string, ctx: unknown) => Promise<void> }): void;
 	appendEntry(type: string, data: unknown): void;
@@ -33,6 +34,7 @@ function makeApi(): MockApi {
 		entries: [],
 		sentMessages: [],
 		notices: [],
+		statuses: [],
 		on(event, handler) {
 			api.handlers.set(event, handler);
 		},
@@ -138,6 +140,9 @@ function makeHarness(): Harness {
 		ui: {
 			notify(message: string, type?: string) {
 				api.notices.push({ message, type });
+			},
+			setStatus(_key: string, text?: string) {
+				if (text) api.statuses.push(text);
 			},
 		},
 		sessionManager: {
@@ -269,6 +274,22 @@ test("--instruction flag works on a manual check", async () => {
 	await h.command("--instruction be strict --model anthropic/claude-3-5-haiku-latest");
 	const call = h.registry.completeCalls.at(-1)!;
 	assert.ok(call.systemPrompt.includes("be strict"));
+});
+
+test("footer status shows progress and last verdict", async () => {
+	const h = makeHarness();
+	await h.start();
+	await h.command("on --every 2 --model anthropic/claude-3-5-haiku-latest");
+
+	assert.ok(h.api.statuses.at(-1)!.includes("babysit on · every 2"), "enabled line");
+
+	await h.tool("bash");
+	assert.ok(h.api.statuses.at(-1)!.includes("1/2 tools"), "progress line");
+
+	await h.tool("bash");
+	await h.settle();
+	assert.ok(h.api.statuses.at(-1)!.includes("on_track"), "verdict line");
+	assert.ok(h.api.statuses.at(-1)!.startsWith("👶"), "baby emoji prefix");
 });
 
 test("model is not called before the threshold", async () => {

@@ -26,7 +26,7 @@ import type {
 
 import { parseCommand } from "./command.ts";
 import { DEFAULT_CONFIG, mergeConfig, type BabysitConfig } from "./config.ts";
-import { log, logError, notify } from "./display.ts";
+import { log, logError, notify, setStatus, truncate, BABY } from "./display.ts";
 import {
 	dedupeReferences,
 	loadReference,
@@ -177,7 +177,10 @@ async function runCheck(
 			buildContextEntries(): ActivityEntry[];
 		};
 		hasUI: boolean;
-		ui: { notify(message: string, type?: "info" | "warning" | "error"): void };
+		ui: {
+			notify(message: string, type?: "info" | "warning" | "error"): void;
+			setStatus?(key: string, text?: string): void;
+		};
 		signal?: AbortSignal;
 	},
 	opts: { refs?: string[]; model?: string; fromCounter: boolean; appendEntry: (type: string, data: unknown) => void },
@@ -190,11 +193,14 @@ async function runCheck(
 	if (opts.model) babysitter.config.model = opts.model;
 	const mid = modelId(babysitter);
 	if (!mid) {
-		notify(ctx, "No babysitter model configured. Use --model provider/model-id or .pi/babysit.json.", "error");
+		const msg = "No babysitter model configured. Use --model provider/model-id or .pi/babysit.json.";
+		notify(ctx, `${BABY} ${msg}`, "error");
+		setStatus(ctx, `${BABY} babysit ✗ no model`);
 		return;
 	}
 
 	st.checkInFlight = true;
+	setStatus(ctx, `${BABY} babysit … checking`);
 	const started = Date.now();
 	try {
 		const sessionId = ctx.sessionManager.getSessionId() || "unknown";
@@ -208,7 +214,8 @@ async function runCheck(
 		// Reference files (config rules + per-command refs).
 		const { refs, error: refError } = loadReferences(babysitter, ctx.cwd, opts.refs ?? []);
 		if (refError) {
-			notify(ctx, `babysit: ${refError}`, "error");
+			notify(ctx, `${BABY} babysit: ${refError}`, "error");
+			setStatus(ctx, `${BABY} babysit ✗ ${truncate(refError, 80)}`);
 			return;
 		}
 		st.referencedFiles = refs.map((r) => r.absPath);
@@ -265,7 +272,9 @@ async function runCheck(
 
 		if (!result.ok) {
 			st.lastCheckError = result.error;
-			notify(ctx, `babysit check failed: ${result.error}`, "error");
+			const err = truncate(result.error ?? "unknown error", 120);
+			notify(ctx, `${BABY} babysit ✗ check failed: ${err}`, "error");
+			setStatus(ctx, `${BABY} babysit ✗ ${err}`);
 			if (opts.fromCounter) babysitter.counter.finishCheck();
 			return;
 		}
@@ -305,8 +314,21 @@ function addUsage(a: { input: number; output: number; cacheRead: number; cacheWr
 	};
 }
 
+const VERDICT_GLYPH: Record<string, string> = {
+	on_track: "✓",
+	concern: "⚠",
+	off_track: "🛑",
+	unclear: "?",
+};
+
 function reportVerdict(
-	ctx: { hasUI: boolean; ui: { notify(message: string, type?: "info" | "warning" | "error"): void } },
+	ctx: {
+		hasUI: boolean;
+		ui: {
+			notify(message: string, type?: "info" | "warning" | "error"): void;
+			setStatus?(key: string, text?: string): void;
+		};
+	},
 	verdict: BabysitVerdict,
 	modelId: string,
 	checkIndex: number,
@@ -315,11 +337,22 @@ function reportVerdict(
 	prefixChanged: boolean,
 ): void {
 	const { status } = verdict;
-	const summary = verdict.summary.replace(/\s+/g, " ").trim();
-	const cacheLine = `cache read=${usage.cacheRead} write=${usage.cacheWrite}${prefixChanged ? " (prefix changed)" : ""}`;
+	const glyph = VERDICT_GLYPH[status] ?? "?";
+	const summary = truncate(verdict.summary, 140);
+	const line = `${BABY} babysit ${glyph} ${status} — ${summary}`;
+	// A one-line notification; concern/off_track get the warning color.
+	if (status === "concern" || status === "off_track") {
+		notify(ctx, line, "warning");
+	} else {
+		notify(ctx, line, "info");
+	}
+	// Persistent footer status, replaced by the next check.
+	setStatus(ctx, line);
 	// Verbose detail: only to stdout in headless modes; in the TUI raw
-	// console output corrupts the interface, so the notify above is enough.
-	if (!ctx.hasUI) log(`check #${checkIndex} ${status} in ${durationMs}ms (${modelId}) — ${cacheLine}`);
+	// console output corrupts the interface, so the lines above are enough.
+	if (!ctx.hasUI) {
+		log(`check #${checkIndex} ${status} in ${durationMs}ms (${modelId}) — cache read=${usage.cacheRead} write=${usage.cacheWrite}${prefixChanged ? " (prefix changed)" : ""}`);
+	}
 }
 
 function statusReport(babysitter: Babysitter): string {
@@ -355,6 +388,7 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 	pi.on("session_start", (event: SessionStartEvent, ctx: ExtensionContext) => {
 		rebind(ctx);
 		if (!ctx.hasUI) log(`session_start (${event.reason}); babysitter ${babysitter.config.enabled ? "enabled" : "disabled"}`);
+		setStatus(ctx, `${BABY} babysit off`);
 	});
 
 	pi.on("session_shutdown", (_event: SessionShutdownEvent, _ctx: ExtensionContext) => {
@@ -368,6 +402,9 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 		// Only count tools from the active session we are babysitting.
 		if (ctx.sessionManager.getSessionId() !== babysitter.state.activeSessionId) return;
 		babysitter.counter.countTool();
+		// Live one-line progress in the footer.
+		const last = babysitter.state.lastVerdict ? ` · last ${babysitter.state.lastVerdict.status}` : "";
+		setStatus(ctx, `${BABY} babysit on · ${babysitter.counter.count}/${babysitter.counter.every} tools${last}`);
 	});
 
 	pi.on("turn_end", async (_event: TurnEndEvent, ctx: ExtensionContext) => {
@@ -418,13 +455,16 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 					if (parsed.instruction) babysitter.state.instruction = parsed.instruction;
 					babysitter.state.enabled = true;
 					babysitter.counter.setEnabled(true);
-					notify(ctx, `babysit enabled (every ${babysitter.config.everyToolCalls} tool executions; model ${modelId(babysitter) || "unset"})`, "info");
+					const line = `${BABY} babysit on · every ${babysitter.config.everyToolCalls} tools · model ${modelId(babysitter) || "unset"}`;
+					notify(ctx, line, "info");
+					setStatus(ctx, line);
 					break;
 				}
 				case "off": {
 					babysitter.state.enabled = false;
 					babysitter.counter.setEnabled(false);
-					notify(ctx, "babysit disabled.", "info");
+					notify(ctx, `${BABY} babysit off`, "info");
+					setStatus(ctx, `${BABY} babysit off`);
 					break;
 				}
 				case "status": {
