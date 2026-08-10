@@ -15,6 +15,28 @@ test("bare subcommand parses", () => {
 	assert.equal(parseCommand("status").subcommand, "status");
 });
 
+test("bare --steer defaults to off_track", () => {
+	const c = parseCommand("on --every 5 --model x/y --steer");
+	assert.equal(c.steer, "off_track");
+});
+
+test("--steer=level parses each level", () => {
+	assert.equal(parseCommand("on --steer=off").steer, "off");
+	assert.equal(parseCommand("on --steer=concern").steer, "concern");
+	assert.equal(parseCommand("on --steer=off_track").steer, "off_track");
+});
+
+test("--steer with explicit level token", () => {
+	assert.equal(parseCommand("on --steer concern").steer, "concern");
+});
+
+test("--steer does not swallow the instruction", () => {
+	const c = parseCommand("on --steer --every 2 do not talk about the roman empire");
+	assert.equal(c.steer, "off_track");
+	assert.equal(c.every, 2);
+	assert.equal(c.instruction, "do not talk about the roman empire");
+});
+
 test("now with @file references", () => {
 	const c = parseCommand("now @file/RULEZ.md @file/docs/constraints.md");
 	assert.equal(c.subcommand, "now");

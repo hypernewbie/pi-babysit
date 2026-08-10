@@ -74,6 +74,10 @@ export interface BabysitState {
 	lastTailPreview?: string;
 	/** Hash of the exact request sent to the model (prefix + tail). */
 	lastRequestHash?: string;
+	/** When the last steering message was injected (ms epoch). */
+	lastSteerAt?: number;
+	/** The last steering message text (for status diagnostics). */
+	lastSteerText?: string;
 	usage: UsageTotals;
 	abortController?: AbortController;
 }

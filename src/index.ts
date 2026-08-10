@@ -36,6 +36,7 @@ import { buildStablePrefix, hashStablePrefix, hashString } from "./prefix.ts";
 import { buildActivityTail, contentText, type ActivityEntry } from "./activity.ts";
 import { runModelCheck, type ModelRegistryCtx } from "./model-check.ts";
 import { ToolCounter } from "./scheduler.ts";
+import { buildSteerMessage, shouldSteer, STEER_COOLDOWN_MS, STEER_CUSTOM_TYPE } from "./steer.ts";
 import { emptyUsage, type BabysitState, type BabysitVerdict } from "./types.ts";
 
 const CUSTOM_ENTRY_TYPE = "babysit-check";
@@ -182,6 +183,12 @@ async function runCheck(
 			setStatus?(key: string, text?: string): void;
 		};
 		signal?: AbortSignal;
+		sendMessage?: (message: {
+			customType: string;
+			content: string;
+			display: boolean;
+			details?: unknown;
+		}, options?: { triggerTurn?: boolean }) => void;
 	},
 	opts: { refs?: string[]; model?: string; fromCounter: boolean; appendEntry: (type: string, data: unknown) => void },
 ): Promise<void> {
@@ -290,6 +297,7 @@ async function runCheck(
 		st.activitySummary = `check #${st.checkCount}: ${verdict.status} — ${verdict.summary.replace(/\s+/g, " ").trim()}`;
 
 		reportVerdict(ctx, verdict, mid, st.checkCount, result.usage, durationMs, prefixChanged);
+		maybeSteer(babysitter, ctx, verdict);
 		if (babysitter.config.persistVerdicts) {
 			opts.appendEntry(CUSTOM_ENTRY_TYPE, {
 				verdict,
@@ -322,6 +330,45 @@ const VERDICT_GLYPH: Record<string, string> = {
 	off_track: "🛑",
 	unclear: "?",
 };
+
+/**
+ * Inject a steering reminder into the main session when a verdict crosses
+ * the configured threshold. Deferred with setTimeout(0) so we never re-enter
+ * the agent loop from inside the awaited turn_end handler; once the run has
+ * settled, `triggerTurn` starts a fresh turn the agent must answer.
+ */
+function maybeSteer(
+	babysitter: Babysitter,
+	ctx: {
+		sendMessage?: (message: {
+			customType: string;
+			content: string;
+			display: boolean;
+			details?: unknown;
+		}, options?: { triggerTurn?: boolean }) => void;
+	},
+	verdict: BabysitVerdict,
+): void {
+	const st = babysitter.state;
+	if (!shouldSteer(babysitter.config.steer, verdict.status)) return;
+	if (st.lastSteerAt && Date.now() - st.lastSteerAt < STEER_COOLDOWN_MS) return;
+	const text = buildSteerMessage(verdict, st.instruction);
+	st.lastSteerAt = Date.now();
+	st.lastSteerText = text;
+	const send = ctx.sendMessage;
+	if (typeof send !== "function") return;
+	setTimeout(() => {
+		send(
+			{
+				customType: STEER_CUSTOM_TYPE,
+				content: text,
+				display: true,
+				details: { status: verdict.status, confidence: verdict.confidence },
+			},
+			{ triggerTurn: true },
+		);
+	}, 0);
+}
 
 function reportVerdict(
 	ctx: {
@@ -364,6 +411,7 @@ function statusReport(babysitter: Babysitter): string {
 		`  enabled: ${st.enabled} (every ${babysitter.counter.every} tool executions)`,
 		`  model: ${modelId(babysitter) || "(not configured)"}`,
 		`  cache retention: ${babysitter.config.cacheRetention}`,
+		`  steer: ${babysitter.config.steer}`,
 		`  counter: ${babysitter.counter.count}/${babysitter.counter.every} (pending=${babysitter.counter.pending})`,
 		`  checks run: ${st.checkCount}`,
 		`  usage: in=${st.usage.input} out=${st.usage.output} cacheRead=${st.usage.cacheRead} cacheWrite=${st.usage.cacheWrite} cost=${st.usage.cost.toFixed(4)}`,
@@ -380,6 +428,9 @@ function statusReport(babysitter: Babysitter): string {
 		lines.push(`  last recommendation: ${st.lastVerdict.recommendation.replace(/\s+/g, " ").trim()}`);
 	}
 	if (st.lastCheckError) lines.push(`  last error: ${st.lastCheckError}`);
+	if (st.lastSteerAt) {
+		lines.push(`  last steer: ${new Date(st.lastSteerAt).toISOString()} (${st.lastSteerText ? truncate(st.lastSteerText, 160) : ""})`);
+	}
 	return lines.join("\n");
 }
 
@@ -458,6 +509,7 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 						babysitter.counter.setEvery(parsed.every);
 					}
 					if (parsed.model) babysitter.config.model = parsed.model;
+					if (parsed.steer) babysitter.config.steer = parsed.steer;
 					if (parsed.refs.length > 0) babysitter.config.rules = dedupeReferences(parsed.refs, ctx.cwd);
 					if (parsed.instruction) babysitter.state.instruction = parsed.instruction;
 					babysitter.state.enabled = true;

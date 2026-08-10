@@ -24,6 +24,7 @@ interface MockApi {
 	registerCommand(name: string, opts: { handler: (args: string, ctx: unknown) => Promise<void> }): void;
 	appendEntry(type: string, data: unknown): void;
 	sendUserMessage(...args: unknown[]): void;
+	sendMessage(...args: unknown[]): void;
 	fire(event: string, ev: unknown, ctx: unknown): Promise<void>;
 }
 
@@ -47,6 +48,9 @@ function makeApi(): MockApi {
 		sendUserMessage(...args) {
 			api.sentMessages.push(args);
 		},
+		sendMessage(...args) {
+			api.sentMessages.push(args);
+		},
 		async fire(event, ev, ctx) {
 			const h = api.handlers.get(event);
 			if (h) await h(ev, ctx);
@@ -62,6 +66,7 @@ interface MockModelRegistry {
 	completeCalls: Array<{ systemPrompt: string; activity: string; options: Record<string, unknown> }>;
 	nextStopReason: "end" | "error" | "aborted";
 	nextError?: string;
+	nextVerdict?: { status: string; confidence: number; summary: string; evidence: string[]; recommendation: string };
 	find(provider: string, modelId: string): unknown;
 	hasConfiguredAuth(model: unknown): boolean;
 	complete(
@@ -77,6 +82,7 @@ function makeModelRegistry(): MockModelRegistry {
 		completeCalls: [],
 		nextStopReason: "end",
 		nextError: undefined,
+		nextVerdict: undefined,
 		find(provider, modelId) {
 			reg.findCalls.push([provider, modelId]);
 			return { id: `${provider}/${modelId}` };
@@ -102,7 +108,9 @@ function makeModelRegistry(): MockModelRegistry {
 				content: [
 					{
 						type: "text",
-						text: JSON.stringify({ status: "on_track", confidence: 0.9, summary: "work is aligned", evidence: [], recommendation: "keep going" }),
+						text: JSON.stringify(
+							reg.nextVerdict ?? { status: "on_track", confidence: 0.9, summary: "work is aligned", evidence: [], recommendation: "keep going" },
+						),
 					},
 				],
 				usage: { input: 10, output: 5, cacheRead: 2, cacheWrite: 3, cost: { total: 0.001 } },
@@ -150,6 +158,9 @@ function makeHarness(): Harness {
 			getLeafId: () => "leaf1",
 			getBranch: () => entries,
 			buildContextEntries: () => entries,
+		},
+		sendMessage(message: unknown, options?: unknown) {
+			api.sentMessages.push({ message, options });
 		},
 		modelRegistry: registry,
 		waitForIdle: async () => {},
@@ -381,4 +392,71 @@ test("agent_settled after-run mode fires when configured", async () => {
 	await h.tool("bash");
 	await h.api.fire("agent_settled", { type: "agent_settled" }, h.ctx);
 	assert.equal(h.registry.completeCalls.length, 0);
+});
+
+test("steering injects a reminder into the session on off_track", async () => {
+	const h = makeHarness();
+	await h.start();
+	h.registry.nextVerdict = {
+		status: "off_track",
+		confidence: 0.9,
+		summary: "rule violated",
+		evidence: ["assistant talked about the roman empire"],
+		recommendation: "stop",
+	};
+	await h.command("on --every 1 --model anthropic/claude-3-5-haiku-latest --steer do not talk about the roman empire");
+
+	await h.tool("bash");
+	await h.settle();
+
+	// Steering is deferred via setTimeout(0): flush the macrotask queue.
+	await new Promise((r) => setTimeout(r, 10));
+
+	assert.equal(h.api.sentMessages.length, 1);
+	const sent = h.api.sentMessages[0] as { message: Record<string, unknown>; options: Record<string, unknown> };
+	assert.equal(sent.options.triggerTurn, true);
+	assert.equal(sent.message.customType, "babysit.steer");
+	assert.ok(String(sent.message.content).includes("REMINDER: YOU ARE OFF TRACK FROM USER INTENT."));
+	assert.ok(String(sent.message.content).includes("do not talk about the roman empire"));
+	assert.ok(String(sent.message.content).includes("YOU MUST REPLY TO THIS MESSAGE"));
+});
+
+test("steering is disabled by default (advisory only)", async () => {
+	const h = makeHarness();
+	await h.start();
+	h.registry.nextVerdict = {
+		status: "off_track",
+		confidence: 0.9,
+		summary: "rule violated",
+		evidence: [],
+		recommendation: "stop",
+	};
+	await h.command("on --every 1 --model anthropic/claude-3-5-haiku-latest do not talk about the roman empire");
+
+	await h.tool("bash");
+	await h.settle();
+	await new Promise((r) => setTimeout(r, 10));
+
+	assert.equal(h.api.sentMessages.length, 0);
+});
+
+test("steer=concern triggers on concern verdicts", async () => {
+	const h = makeHarness();
+	await h.start();
+	h.registry.nextVerdict = {
+		status: "concern",
+		confidence: 0.7,
+		summary: "possible violation",
+		evidence: [],
+		recommendation: "check",
+	};
+	await h.command("on --every 1 --model anthropic/claude-3-5-haiku-latest --steer=concern do not talk about the roman empire");
+
+	await h.tool("bash");
+	await h.settle();
+	await new Promise((r) => setTimeout(r, 10));
+
+	assert.equal(h.api.sentMessages.length, 1);
+	const sent = h.api.sentMessages[0] as { message: Record<string, unknown>; options: Record<string, unknown> };
+	assert.ok(String(sent.message.content).includes("YOU MAY BE OFF TRACK FROM USER INTENT."));
 });

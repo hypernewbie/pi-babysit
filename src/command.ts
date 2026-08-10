@@ -16,6 +16,7 @@
  */
 
 import { parseFileReferences } from "./file-references.ts";
+import type { SteerLevel } from "./steer.ts";
 
 export type Subcommand = "now" | "on" | "off" | "status";
 
@@ -27,6 +28,8 @@ export interface ParsedCommand {
 	tailTokens?: number;
 	/** Custom instruction for the check, from bare text or --instruction. */
 	instruction?: string;
+	/** Steering level from --steer[=level]; undefined when not given. */
+	steer?: SteerLevel;
 }
 
 const SUBCOMMANDS = new Set<Subcommand>(["now", "on", "off", "status"]);
@@ -53,6 +56,7 @@ export function parseCommand(args: string): ParsedCommand {
 	let every: number | undefined;
 	let model: string | undefined;
 	let tailTokens: number | undefined;
+	let steer: SteerLevel | undefined;
 	const instructionWords: string[] = [];
 	let cursor = 0;
 
@@ -74,6 +78,14 @@ export function parseCommand(args: string): ParsedCommand {
 			while (cursor + 1 < tokens.length && !isFlag(tokens[cursor + 1]!) && !isRef(tokens[cursor + 1]!)) {
 				instructionWords.push(tokens[++cursor]!);
 			}
+		} else if (tok === "--steer" || tok.startsWith("--steer=")) {
+			const raw = tok.startsWith("--steer=") ? tok.slice("--steer=".length) : tokens[cursor + 1];
+			if (raw !== undefined && (raw === "off" || raw === "concern" || raw === "off_track")) {
+				steer = raw;
+				if (!tok.startsWith("--steer=")) cursor++;
+			} else {
+				steer = "off_track";
+			}
 		} else if (isRef(tok)) {
 			// references are collected separately by parseFileReferences()
 		} else if (!isFlag(tok)) {
@@ -91,5 +103,6 @@ export function parseCommand(args: string): ParsedCommand {
 		model,
 		tailTokens,
 		instruction,
+		steer,
 	};
 }

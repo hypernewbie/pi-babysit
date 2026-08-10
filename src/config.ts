@@ -24,6 +24,8 @@ export interface BabysitConfig {
 	runAfterSettle: boolean;
 	/** Provider prompt-cache retention hint. "long" costs more on write. */
 	cacheRetention: "none" | "short" | "long";
+	/** Steering level: "off" (advisory only), or inject a reminder at concern / off_track. */
+	steer: SteerLevel;
 }
 
 export const DEFAULT_CONFIG: BabysitConfig = {
@@ -37,7 +39,10 @@ export const DEFAULT_CONFIG: BabysitConfig = {
 	persistVerdicts: false,
 	runAfterSettle: false,
 	cacheRetention: "short",
+	steer: "off",
 };
+
+import type { SteerLevel } from "./steer.ts";
 
 export type PartialConfig = Partial<BabysitConfig>;
 
