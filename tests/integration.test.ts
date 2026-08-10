@@ -407,10 +407,8 @@ test("steering injects a reminder into the session on off_track", async () => {
 	await h.command("on --every 1 --model anthropic/claude-3-5-haiku-latest --steer do not talk about the roman empire");
 
 	await h.tool("bash");
-	await h.settle();
-
-	// Steering is deferred via setTimeout(0): flush the macrotask queue.
-	await new Promise((r) => setTimeout(r, 10));
+	await h.settle(); // turn_end runs the check, queues the steer
+	await h.api.fire("agent_settled", { type: "agent_settled" }, h.ctx); // idle: delivers it
 
 	assert.equal(h.api.sentMessages.length, 1);
 	const args = h.api.sentMessages[0] as [Record<string, unknown>, Record<string, unknown>];
@@ -420,6 +418,28 @@ test("steering injects a reminder into the session on off_track", async () => {
 	assert.ok(String(message.content).includes("REMINDER: YOU ARE OFF TRACK FROM USER INTENT."));
 	assert.ok(String(message.content).includes("do not talk about the roman empire"));
 	assert.ok(String(message.content).includes("YOU MUST REPLY TO THIS MESSAGE"));
+});
+
+test("steering queues when mid-run and delivers at agent_settled (not before)", async () => {
+	const h = makeHarness();
+	await h.start();
+	h.registry.nextVerdict = {
+		status: "off_track",
+		confidence: 0.9,
+		summary: "rule violated",
+		evidence: ["assistant talked about the roman empire"],
+		recommendation: "stop",
+	};
+	await h.command("on --every 1 --model anthropic/claude-3-5-haiku-latest --steer do not talk about the roman empire");
+
+	await h.tool("bash");
+	await h.settle();
+
+	// Not delivered yet: the run is still in flight, must wait for agent_settled.
+	assert.equal(h.api.sentMessages.length, 0);
+
+	await h.api.fire("agent_settled", { type: "agent_settled" }, h.ctx);
+	assert.equal(h.api.sentMessages.length, 1);
 });
 
 test("steering is disabled by default (advisory only)", async () => {
@@ -436,7 +456,7 @@ test("steering is disabled by default (advisory only)", async () => {
 
 	await h.tool("bash");
 	await h.settle();
-	await new Promise((r) => setTimeout(r, 10));
+	await h.api.fire("agent_settled", { type: "agent_settled" }, h.ctx);
 
 	assert.equal(h.api.sentMessages.length, 0);
 });
@@ -455,7 +475,7 @@ test("steer=concern triggers on concern verdicts", async () => {
 
 	await h.tool("bash");
 	await h.settle();
-	await new Promise((r) => setTimeout(r, 10));
+	await h.api.fire("agent_settled", { type: "agent_settled" }, h.ctx);
 
 	assert.equal(h.api.sentMessages.length, 1);
 	const args = h.api.sentMessages[0] as [Record<string, unknown>, Record<string, unknown>];

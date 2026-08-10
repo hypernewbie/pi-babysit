@@ -78,6 +78,8 @@ export interface BabysitState {
 	lastSteerAt?: number;
 	/** The last steering message text (for status diagnostics). */
 	lastSteerText?: string;
+	/** Queued steering, delivered at agent_settled (or immediately when idle). */
+	pendingSteer?: { text: string; status: string; confidence: number };
 	usage: UsageTotals;
 	abortController?: AbortController;
 }

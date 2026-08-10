@@ -183,6 +183,7 @@ async function runCheck(
 			setStatus?(key: string, text?: string): void;
 		};
 		signal?: AbortSignal;
+		isIdle?: () => boolean;
 	},
 	opts: {
 		refs?: string[];
@@ -302,7 +303,7 @@ async function runCheck(
 		st.activitySummary = `check #${st.checkCount}: ${verdict.status} — ${verdict.summary.replace(/\s+/g, " ").trim()}`;
 
 		reportVerdict(ctx, verdict, mid, st.checkCount, result.usage, durationMs, prefixChanged);
-		maybeSteer(babysitter, opts.sendMessage, verdict);
+		maybeSteer(babysitter, ctx, opts.sendMessage, verdict);
 		if (babysitter.config.persistVerdicts) {
 			opts.appendEntry(CUSTOM_ENTRY_TYPE, {
 				verdict,
@@ -344,6 +345,7 @@ const VERDICT_GLYPH: Record<string, string> = {
  */
 function maybeSteer(
 	babysitter: Babysitter,
+	ctx: { isIdle?: () => boolean },
 	send: ((message: {
 		customType: string;
 		content: string;
@@ -359,17 +361,20 @@ function maybeSteer(
 	st.lastSteerAt = Date.now();
 	st.lastSteerText = text;
 	if (typeof send !== "function") return;
-	setTimeout(() => {
-		send(
-			{
-				customType: STEER_CUSTOM_TYPE,
-				content: text,
-				display: true,
-				details: { status: verdict.status, confidence: verdict.confidence },
-			},
-			{ triggerTurn: true },
-		);
-	}, 0);
+	const message = {
+		customType: STEER_CUSTOM_TYPE,
+		content: text,
+		display: true,
+		details: { status: verdict.status, confidence: verdict.confidence },
+	};
+	if (ctx.isIdle?.()) {
+		// Idle (e.g. manual /babysit now after waitForIdle): trigger a turn now.
+		send(message, { triggerTurn: true });
+	} else {
+		// Mid-run: queue for agent_settled, when the run is definitively idle
+		// and triggerTurn reliably starts a new turn (never the steer path).
+		st.pendingSteer = { text, status: verdict.status, confidence: verdict.confidence };
+	}
 }
 
 function reportVerdict(
@@ -430,6 +435,7 @@ function statusReport(babysitter: Babysitter): string {
 		lines.push(`  last recommendation: ${st.lastVerdict.recommendation.replace(/\s+/g, " ").trim()}`);
 	}
 	if (st.lastCheckError) lines.push(`  last error: ${st.lastCheckError}`);
+	if (st.pendingSteer) lines.push(`  pending steer: queued (delivered at agent_settled)`);
 	if (st.lastSteerAt) {
 		lines.push(`  last steer: ${new Date(st.lastSteerAt).toISOString()} (${st.lastSteerText ? truncate(st.lastSteerText, 160) : ""})`);
 	}
@@ -484,6 +490,20 @@ export default function babysitExtension(pi: ExtensionAPI): void {
 	// continuations) has settled.
 	pi.on("agent_settled", async (_event: AgentSettledEvent, ctx: ExtensionContext) => {
 		if (!babysitter.state.enabled) return;
+		// Deliver any queued steering now that the run is definitively idle.
+		const pending = babysitter.state.pendingSteer;
+		if (pending) {
+			babysitter.state.pendingSteer = undefined;
+			pi.sendMessage(
+				{
+					customType: STEER_CUSTOM_TYPE,
+					content: pending.text,
+					display: true,
+					details: { status: pending.status, confidence: pending.confidence },
+				},
+				{ triggerTurn: true },
+			);
+		}
 		if (!babysitter.config.runAfterSettle) return;
 		if (!babysitter.counter.pending || babysitter.counter.inFlight) return;
 		await runCheck(babysitter, ctx, {
