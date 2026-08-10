@@ -1,12 +1,12 @@
 # pi-babysit
 
-pi-babysit watches your Pi session in the background. A second model checks whether the work still matches your original intent and your project rules. It only reports drift. It never edits files, runs tools, or steers the agent.
+pi-babysit watches your Pi session in the background. A second (cheaper) model enforces the session rules you set — an inline rule like `do not talk about the roman empire`, or project rules from `@file/` references. It reports drift in the footer, and when enabled (`--steer`) it injects a reminder into the session that the agent must answer. It never edits files or runs tools.
 
 ## How it works
 
-Each check sends two parts to the babysitter model. The first part never changes between checks. It contains the role, the rubric, your original request, the files you referenced, and the JSON format the model must use. Because this part is stable, Pi can reuse the prompt cache.
+Each check sends two parts to the babysitter model. The first part never changes between checks. It contains the role, the rubric, the session rules, the files you referenced, and the JSON format the model must use. Because this part is stable, Pi can reuse the prompt cache.
 
-The second part changes each time. It contains recent messages, tool names, truncated results, errors, and the count of tools since the last check.
+The second part changes each time. It contains recent user and assistant messages (conversation only — tool calls and results are excluded) and the count of tools since the last check.
 
 Pi counts completed tools. When the count reaches the threshold, Pi runs the next check at the end of the turn. Pi waits for the check to complete before it starts the next turn. Only one check runs per turn, even when tools run in parallel. The remainder carries to the next cycle.
 
@@ -50,13 +50,14 @@ is needed.
 /babysit
 /babysit @file/RULEZ.md
 /babysit @file/RULEZ.md @file/NOTES.md
-/babysit --every 5 --model anthropic/claude-3-5-haiku-latest
+/babysit on --every 5 --model opencode-go/deepseek-v4-flash --steer do not talk about the roman empire
 ```
 
 Options:
 
 - `--every N`: check after N completed tools. Default is 5.
 - `--model provider/model-id`: babysitter model for this session.
+- `--steer[=level]`: on a rule violation, inject a reminder into the session that the agent must answer. Levels: `off_track` (default), `concern`, `off`. `concern` sends a short nudge; `off_track` sends the full reminder with evidence.
 - `@file/path`: add a file to the stable prefix.
 - Any other text: a rule the session must follow, enforced by the check (also `--instruction ...`).
 
@@ -79,4 +80,4 @@ To work on the extension, do these steps:
 
 `turn_end` handlers run before Pi starts the next turn. At that point, tool results are already in the session tree. For periodic checks, use `turn_end` as the main hook.
 
-The extension is advisory only. It does not stop the agent.
+The extension is advisory by default: it reports verdicts and never edits files or runs tools. With `--steer`, an `off_track` or `concern` verdict also injects a reminder message that the agent must answer.
