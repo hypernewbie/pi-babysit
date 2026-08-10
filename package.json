@@ -1,6 +1,6 @@
 {
   "name": "pi-babysit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Periodic read-only drift health check for active Pi coding sessions",
   "private": true,
   "type": "module",
