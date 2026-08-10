@@ -40,7 +40,6 @@ import { emptyUsage, type BabysitState, type BabysitVerdict } from "./types.ts";
 
 const CUSTOM_ENTRY_TYPE = "babysit-check";
 const INTENT_MAX_CHARS = 4000;
-const DEFAULT_CACHE_RETENTION = "short";
 
 interface Babysitter {
 	config: BabysitConfig;
@@ -144,13 +143,21 @@ function modelId(babysitter: Babysitter): string {
 }
 
 /** Assemble the dynamic activity prompt (header + bounded tail). */
-function buildActivityPrompt(tail: string, toolsSinceCheck: number, truncated: boolean, tailTokens: number): string {
+function buildActivityPrompt(
+	tail: string,
+	toolsSinceCheck: number,
+	truncated: boolean,
+	tailTokens: number,
+	lastCheckNote: string | undefined,
+	contextChangedNote: string | undefined,
+): string {
 	const lines: string[] = [
 		`Recent session activity (${tailTokens} estimated tokens; oldest entries may be dropped):`,
 		`Tools executed since the last check: ${toolsSinceCheck}`,
-		"",
-		tail,
 	];
+	if (lastCheckNote) lines.push(`Last check: ${lastCheckNote}`);
+	if (contextChangedNote) lines.push(contextChangedNote);
+	lines.push("", tail);
 	if (truncated) lines.push("", "(some tool results were truncated)");
 	return lines.join("\n");
 }
@@ -226,7 +233,16 @@ async function runCheck(
 			maxToolResults: babysitter.config.maxToolResults,
 		};
 		const tail = buildActivityTail(ctx.sessionManager.buildContextEntries() as ActivityEntry[], tailOpts);
-		const activityPrompt = buildActivityPrompt(tail.text, babysitter.counter.count, tail.truncated, babysitter.config.tailTokens);
+		const leafChanged = st.lastCheckedLeafId !== undefined && st.lastCheckedLeafId !== leafId;
+		const contextChangedNote = leafChanged ? "(session branch/leaf changed since the last check; context was rebuilt)" : undefined;
+		const activityPrompt = buildActivityPrompt(
+			tail.text,
+			babysitter.counter.count,
+			tail.truncated,
+			babysitter.config.tailTokens,
+			st.activitySummary,
+			contextChangedNote,
+		);
 
 		// Combined abort: active agent signal + session shutdown controller.
 		const signals: AbortSignal[] = [];
@@ -240,7 +256,7 @@ async function runCheck(
 			activityPrompt,
 			signal,
 			sessionId: `babysit:${sessionId}`,
-			cacheRetention: DEFAULT_CACHE_RETENTION,
+			cacheRetention: babysitter.config.cacheRetention,
 		});
 
 		const durationMs = Date.now() - started;
@@ -259,6 +275,7 @@ async function runCheck(
 		st.lastCheckAt = Date.now();
 		st.lastCheckedLeafId = leafId;
 		st.checkCount++;
+		st.activitySummary = `check #${st.checkCount}: ${verdict.status} — ${verdict.summary.replace(/\s+/g, " ").trim()}`;
 
 		reportVerdict(ctx, verdict, mid, st.checkCount, result.usage, durationMs, prefixChanged);
 		if (babysitter.config.persistVerdicts) {
@@ -320,11 +337,13 @@ function statusReport(babysitter: Babysitter): string {
 		`babysit status`,
 		`  enabled: ${st.enabled} (every ${babysitter.counter.every} tool executions)`,
 		`  model: ${modelId(babysitter) || "(not configured)"}`,
+		`  cache retention: ${babysitter.config.cacheRetention}`,
 		`  counter: ${babysitter.counter.count}/${babysitter.counter.every} (pending=${babysitter.counter.pending})`,
 		`  checks run: ${st.checkCount}`,
 		`  usage: in=${st.usage.input} out=${st.usage.output} cacheRead=${st.usage.cacheRead} cacheWrite=${st.usage.cacheWrite} cost=${st.usage.cost.toFixed(4)}`,
 		`  prefix hash: ${st.prefixHash ?? "(not built yet)"}`,
 	];
+	if (st.activitySummary) lines.push(`  last check note: ${st.activitySummary}`);
 	if (st.lastVerdict) {
 		lines.push(`  last verdict: ${st.lastVerdict.status} (conf ${st.lastVerdict.confidence}) — ${st.lastVerdict.summary.replace(/\s+/g, " ").trim()}`);
 		lines.push(`  last recommendation: ${st.lastVerdict.recommendation.replace(/\s+/g, " ").trim()}`);

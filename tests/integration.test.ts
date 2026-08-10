@@ -195,6 +195,65 @@ test("/babysit now runs a check with stable prefix and activity tail", async () 
 	assert.equal(call.options.sessionId, "babysit:sess-1");
 });
 
+test("cache retention is configurable via project config", async () => {
+	const h = makeHarness();
+	fs.mkdirSync(path.join(h.cwd, ".pi"), { recursive: true });
+	fs.writeFileSync(path.join(h.cwd, ".pi", "babysit.json"), JSON.stringify({ cacheRetention: "long" }));
+	await h.start();
+	await h.command("now --model anthropic/claude-3-5-haiku-latest");
+	assert.equal(h.registry.completeCalls[0]!.options.cacheRetention, "long");
+});
+
+test("second check carries the rolling summary of the previous check", async () => {
+	const h = makeHarness();
+	await h.start();
+	await h.command("on --every 1 --model anthropic/claude-3-5-haiku-latest");
+
+	await h.tool("bash");
+	await h.settle();
+	assert.equal(h.registry.completeCalls.length, 1);
+	assert.ok(!h.registry.completeCalls[0]!.activity.includes("Last check:"));
+
+	await h.tool("bash");
+	await h.settle();
+	const second = h.registry.completeCalls[1]!;
+	assert.ok(second.activity.includes("Last check: check #1: on_track"), second.activity);
+});
+
+test("leaf change between checks is noted in the activity prompt", async () => {
+	const h = makeHarness();
+	await h.start();
+	await h.command("on --every 1 --model anthropic/claude-3-5-haiku-latest");
+
+	await h.tool("bash");
+	await h.settle();
+
+	// Simulate a branch switch: the session manager now points at a new leaf.
+	(h.ctx.sessionManager as { getLeafId(): string }).getLeafId = () => "leaf2";
+	await h.tool("bash");
+	await h.settle();
+	assert.ok(h.registry.completeCalls[1]!.activity.includes("session branch/leaf changed"));
+});
+
+test("status command reports usage totals and cache retention", async () => {
+	const h = makeHarness();
+	await h.start();
+	await h.command("now --model anthropic/claude-3-5-haiku-latest");
+	let statusOut = "";
+	const orig = console.log;
+	console.log = (s: string) => {
+		statusOut += String(s) + "\n";
+	};
+	try {
+		await h.command("status");
+	} finally {
+		console.log = orig;
+	}
+	assert.ok(statusOut.includes("checks run: 1"));
+	assert.ok(statusOut.includes("cacheRead=2"));
+	assert.ok(statusOut.includes("cache retention: short"));
+});
+
 test("model is not called before the threshold", async () => {
 	const h = makeHarness();
 	await h.start();

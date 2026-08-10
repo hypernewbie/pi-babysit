@@ -26,6 +26,8 @@ export interface BabysitConfig {
 	persistVerdicts: boolean;
 	/** Also run a pending check at agent_settled (after the whole run settles). */
 	runAfterSettle: boolean;
+	/** Provider prompt-cache retention hint. "long" costs more on write. */
+	cacheRetention: "none" | "short" | "long";
 }
 
 export const DEFAULT_CONFIG: BabysitConfig = {
@@ -40,6 +42,7 @@ export const DEFAULT_CONFIG: BabysitConfig = {
 	maxToolResults: 3,
 	persistVerdicts: false,
 	runAfterSettle: false,
+	cacheRetention: "short",
 };
 
 export type PartialConfig = Partial<BabysitConfig>;
