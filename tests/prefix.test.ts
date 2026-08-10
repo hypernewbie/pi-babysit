@@ -25,12 +25,13 @@ test("prefix is deterministic for identical inputs", () => {
 	assert.equal(buildStablePrefix(inputs()), buildStablePrefix(inputs()));
 });
 
-test("prefix includes intent and reference contents", () => {
+test("prefix includes reference contents but not the original intent", () => {
 	const p = buildStablePrefix(inputs());
-	assert.ok(p.includes("Migrate the config module."));
+	assert.ok(!p.includes("Migrate the config module."));
 	assert.ok(p.includes("<reference_file path=\"RULEZ.md\">"));
 	assert.ok(p.includes("Always run tests."));
 	assert.ok(p.includes("</reference_file>"));
+	assert.ok(p.includes("Session rules"));
 });
 
 test("prefix contains no timestamps or counters", () => {
@@ -58,9 +59,11 @@ function ref(displayPath: string, content: string) {
 	return { absPath: "/proj/" + displayPath, displayPath, content, hash: content, size: content.length };
 }
 
-test("empty intent produces a placeholder", () => {
-	const p = buildStablePrefix(inputs({ intent: "" }));
-	assert.ok(p.includes("(no user intent captured yet)"));
+test("the original intent is never emitted into the prefix", () => {
+	const p = buildStablePrefix(inputs({ intent: "Should not appear." }));
+	assert.ok(!p.includes("Should not appear."));
+	assert.ok(!p.includes("(no user intent captured yet)"));
+	assert.ok(!p.includes("Original user intent"));
 });
 
 test("output schema is present", () => {

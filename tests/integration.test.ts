@@ -200,7 +200,8 @@ test("/babysit now runs a check with stable prefix and activity tail", async () 
 	assert.equal(h.registry.completeCalls.length, 1);
 	const call = h.registry.completeCalls[0]!;
 	assert.ok(call.systemPrompt.includes("babysitter for a Pi coding session"));
-	assert.ok(call.systemPrompt.includes("migrate the config module"));
+	assert.ok(!call.systemPrompt.includes("migrate the config module"), "original intent is not part of the judge prompt");
+	assert.ok(call.systemPrompt.includes("ENFORCE the session rules"));
 	assert.ok(call.activity.includes("User: migrate the config module"));
 	assert.equal(call.options.cacheRetention, "short");
 	assert.equal(call.options.sessionId, "babysit:sess-1");
